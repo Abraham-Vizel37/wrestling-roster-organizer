@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Wrestling Roster Organizer</title>
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -31,6 +31,9 @@
     <li><a href="#championships" class="nav-link" data-view="championships">👑 Championships</a></li>
     <li><a href="#import" class="nav-link" data-view="import">📥 Import/Export</a></li>
   </ul>
+  <div class="sidebar-footer">
+    <a href="dashboard.html" class="nav-link">🏟️ Live Dashboard →</a>
+  </div>
 </nav>
 
 <!-- ===== OVERLAY (mobile sidebar) ===== -->
@@ -93,13 +96,13 @@
       <select id="filterGame" onchange="app.loadRoster()"><option value="">All Games</option></select>
       <select id="filterBrand" onchange="app.loadRoster()"><option value="">All Brands</option></select>
       <select id="filterAlignment" onchange="app.loadRoster()"><option value="">All Alignments</option>
-        <option value="face">Face</option><option value="heel">Heel</option><option value="tweener">Tweener</option>
+        <option value="Face">Face</option><option value="Heel">Heel</option><option value="Tweener">Tweener</option>
       </select>
       <select id="filterGender" onchange="app.loadRoster()"><option value="">All Genders</option>
-        <option value="male">Male</option><option value="female">Female</option>
+        <option value="Male">Male</option><option value="Female">Female</option>
       </select>
       <select id="filterStatus" onchange="app.loadRoster()"><option value="">All Status</option>
-        <option value="active">Active</option><option value="injured">Injured</option><option value="released">Released</option>
+        <option value="Active">Active</option><option value="Injured">Injured</option><option value="Released">Released</option>
       </select>
       <input type="search" id="searchWrestler" placeholder="Search..." oninput="app.loadRoster()">
     </div>
@@ -290,7 +293,7 @@
 </div>
 
 <!-- ===== SCRIPTS ===== -->
-<script src="js/store.js?v=3"></script>
-<script src="js/app.js?v=3"></script>
+<script src="js/store.js?v=4"></script>
+<script src="js/app.js?v=4"></script>
 </body>
 </html>

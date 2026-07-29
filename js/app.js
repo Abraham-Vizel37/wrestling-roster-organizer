@@ -756,6 +756,200 @@ const app = {
 };
 
 // ── Form Management ──
+// Tracks form state for dirty-detection and accidental-erasure prevention
+let _formState = { type: null, editId: null, snapshot: null, initialFields: {} };
+
+function showForm(type, editData = null) {
+  const def = FORM_DEFS[type];
+  if (!def) return;
+
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modal');
+  const title = document.getElementById('modalTitle');
+  const body = document.getElementById('modalBody');
+
+  title.textContent = editData ? `Edit ${def.title}` : `New ${def.title}`;
+
+  let html = `<form id="entityForm" onsubmit="submitForm('${type}', ${editData ? editData.id : 'null'}); return false;">`;
+
+  def.fields.forEach(f => {
+    const val = editData ? editData[f.name] : '';
+    html += `<div class="form-group">`;
+    html += `<label for="field_${f.name}">${f.label}${f.required ? ' <span class="required-star">*</span>' : ''}</label>`;
+
+    switch (f.type) {
+      case 'text':
+        html += `<input type="text" id="field_${f.name}" name="${f.name}" value="${app.esc(String(val ?? ''))}" ${f.required ? 'required' : ''} placeholder="${f.placeholder || ''}">`;
+        break;
+      case 'number':
+        html += `<input type="number" id="field_${f.name}" name="${f.name}" value="${val ?? ''}">`;
+        break;
+      case 'color':
+        html += `<input type="color" id="field_${f.name}" name="${f.name}" value="${val || '#5865f2'}">`;
+        break;
+      case 'textarea':
+        html += `<textarea id="field_${f.name}" name="${f.name}">${app.esc(String(val ?? ''))}</textarea>`;
+        break;
+      case 'checkbox':
+        html += `<label class="checkbox-label"><input type="checkbox" id="field_${f.name}" name="${f.name}" ${val ? 'checked' : ''}> ${f.label_hint || ''}</label>`;
+        break;
+      case 'range':
+        html += `<div class="range-wrap"><input type="range" id="field_${f.name}" name="${f.name}" min="${f.min || 1}" max="${f.max || 100}" value="${val ?? 50}" oninput="this.nextElementSibling.textContent=this.value"><span class="range-value">${val ?? 50}</span></div>`;
+        break;
+      case 'select':
+        html += `<select id="field_${f.name}" name="${f.name}">`;
+        html += '<option value="">-- Select --</option>';
+        if (Array.isArray(f.options)) {
+          f.options.forEach(o => {
+            const match = String(val ?? '').toLowerCase() === String(o).toLowerCase();
+            html += `<option value="${o}" ${match ? 'selected' : ''}>${o}</option>`;
+          });
+        } else if (f.options === 'games') {
+          app.state.games.forEach(g => {
+            html += `<option value="${g.id}" ${Number(val) === g.id ? 'selected' : ''}>${app.esc(g.name)}</option>`;
+          });
+        } else if (f.options === 'brands') {
+          const gameId = editData?.game_id || (document.getElementById('field_game_id')?.value);
+          const brands = gameId ? app.state.brands.filter(b => b.game_id == gameId) : app.state.brands;
+          brands.forEach(b => {
+            html += `<option value="${b.id}" ${Number(val) === b.id ? 'selected' : ''}>${app.esc(b.name)}</option>`;
+          });
+        } else if (f.options === 'wrestlers') {
+          app.state.wrestlers.forEach(w => {
+            html += `<option value="${w.id}" ${Number(val) === w.id ? 'selected' : ''}>${app.esc(w.name)}</option>`;
+          });
+        }
+        html += `</select>`;
+        break;
+      case 'multi-select':
+        html += `<select id="field_${f.name}" name="${f.name}" multiple size="6">`;
+        const selectedIds = editData?.member_ids || editData?.memberIds || [];
+        const wrestlers = app.state.wrestlers || [];
+        wrestlers.forEach(w => {
+          html += `<option value="${w.id}" ${selectedIds.includes(w.id) ? 'selected' : ''}>${app.esc(w.name)}</option>`;
+        });
+        html += `</select>`;
+        html += `<small class="field-hint">Hold Ctrl/Cmd to select multiple</small>`;
+        break;
+    }
+    html += `</div>`;
+  });
+
+  html += `<div class="form-actions">
+    <button type="submit" class="btn btn-primary">${editData ? '💾 Save Changes' : '➕ Create'}</button>
+    <button type="button" class="btn btn-secondary" onclick="closeForm()">Cancel</button>
+  </div>`;
+  html += '</form>';
+
+  body.innerHTML = html;
+  overlay.classList.add('show');
+  modal.classList.add('show');
+
+  // ── Form-dirty tracking ──
+  _formState.type = type;
+  _formState.editId = editData ? editData.id : null;
+  _formState.snapshot = editData ? JSON.parse(JSON.stringify(editData)) : null;
+  _formState.initialFields = {};
+  def.fields.forEach(f => {
+    const el = document.getElementById(`field_${f.name}`);
+    if (el) _formState.initialFields[f.name] = el.value || '';
+  });
+
+  // Track changes on any input
+  document.getElementById('entityForm').addEventListener('input', () => {
+    const isDirty = isFormDirty(def);
+    document.querySelector('#entityForm .btn-primary').textContent =
+      _formState.editId ? (isDirty ? '💾 Save Changes' : '💾 Save (no changes)') : '➕ Create';
+  });
+}
+
+/** Check if any field differs from initial state */
+function isFormDirty(def) {
+  for (const f of def.fields) {
+    const el = document.getElementById(`field_${f.name}`);
+    if (!el) continue;
+    const current = el.value || '';
+    const initial = _formState.initialFields[f.name] || '';
+    if (current !== initial) return true;
+  }
+  return false;
+}
+
+async function submitForm(type, editId) {
+  const form = document.getElementById('entityForm');
+  const data = {};
+  const def = FORM_DEFS[type];
+
+  for (const f of def.fields) {
+    const el = document.getElementById(`field_${f.name}`);
+    if (!el) continue;
+    if (f.type === 'checkbox') {
+      data[f.name] = el.checked;
+    } else if (f.type === 'multi-select') {
+      data[f.name] = Array.from(el.selectedOptions).map(o => parseInt(o.value));
+    } else if (f.type === 'number' || f.name === 'sort_order') {
+      data[f.name] = el.value ? parseInt(el.value) : null;
+    } else if (f.name.endsWith('_id') && f.type === 'select') {
+      data[f.name] = el.value ? parseInt(el.value) : null;
+    } else {
+      data[f.name] = el.value;
+    }
+  }
+
+  // Ensure game_id is always set for multi-game entities
+  if (!data.game_id && document.getElementById('field_game_id')) {
+    data.game_id = parseInt(document.getElementById('field_game_id').value);
+  }
+
+  // Snapshot-based rollback: keep a copy of the original before save
+  const originalBackup = _formState.snapshot ? JSON.parse(JSON.stringify(_formState.snapshot)) : null;
+
+  try {
+    if (editId) {
+      await def.update(editId, data);
+      app.showToast(`✅ ${def.title} saved`);
+    } else {
+      await def.create(data);
+      app.showToast(`✅ ${def.title} created`);
+    }
+    _formState = { type: null, editId: null, snapshot: null, initialFields: {} };
+    closeForm();
+    await app.loadAll();
+  } catch (err) {
+    // Attempt rollback if update failed and we have a snapshot
+    if (editId && originalBackup && def.update) {
+      try {
+        await def.update(editId, originalBackup);
+        app.showToast('⚠️ Save failed — data restored to previous state');
+      } catch (rollbackErr) {
+        console.error('Rollback also failed:', rollbackErr);
+      }
+    }
+    app.showError(err.message);
+  }
+}
+
+function closeForm() {
+  // Check for unsaved changes
+  const def = FORM_DEFS[_formState.type];
+  const hasDirty = def && isFormDirty(def);
+  const isNew = _formState.editId === null;
+
+  if (hasDirty && !isNew) {
+    if (!confirm('You have unsaved changes. Discard them?')) return;
+  }
+
+  document.getElementById('modalOverlay').classList.remove('show');
+  document.getElementById('modal').classList.remove('show');
+  _formState = { type: null, editId: null, snapshot: null, initialFields: {} };
+}
+
+// Overlay click also goes through dirty check
+document.addEventListener('click', function(e) {
+  if (e.target === document.getElementById('modalOverlay')) {
+    closeForm();
+  }
+});
 
 const FORM_DEFS = {
   game: {
@@ -788,9 +982,9 @@ const FORM_DEFS = {
       { name: 'name', label: 'Name', type: 'text', required: true },
       { name: 'game_id', label: 'Game', type: 'select', options: 'games', required: true },
       { name: 'brand_id', label: 'Brand', type: 'select', options: 'brands' },
-      { name: 'gender', label: 'Gender', type: 'select', options: ['male', 'female', 'other'] },
-      { name: 'alignment', label: 'Alignment', type: 'select', options: ['face', 'heel', 'tweener'] },
-      { name: 'status', label: 'Status', type: 'select', options: ['active', 'injured', 'released', 'returning'] },
+      { name: 'gender', label: 'Gender', type: 'select', options: ['Male', 'Female', 'Other'] },
+      { name: 'alignment', label: 'Alignment', type: 'select', options: ['Face', 'Heel', 'Tweener'] },
+      { name: 'status', label: 'Status', type: 'select', options: ['Active', 'Injured', 'Released', 'Returning'] },
       { name: 'role', label: 'Role', type: 'text', placeholder: 'Singles, Tag Specialist, etc.' },
       { name: 'finisher', label: 'Finisher', type: 'text' },
       { name: 'power', label: 'Overall Rating (1-100)', type: 'range', min: 1, max: 100 },
@@ -808,8 +1002,8 @@ const FORM_DEFS = {
       { name: 'brand_id', label: 'Brand', type: 'select', options: 'brands' },
       { name: 'member1_id', label: 'Member 1', type: 'select', options: 'wrestlers' },
       { name: 'member2_id', label: 'Member 2', type: 'select', options: 'wrestlers' },
-      { name: 'alignment', label: 'Alignment', type: 'select', options: ['face', 'heel', 'tweener'] },
-      { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'disbanded'] },
+      { name: 'alignment', label: 'Alignment', type: 'select', options: ['Face', 'Heel', 'Tweener'] },
+      { name: 'status', label: 'Status', type: 'select', options: ['Active', 'Inactive', 'Disbanded'] },
     ],
     create: (d) => Store.createTagTeam(d),
     update: (id, d) => Store.updateTagTeam(id, d),
@@ -821,7 +1015,7 @@ const FORM_DEFS = {
       { name: 'game_id', label: 'Game', type: 'select', options: 'games', required: true },
       { name: 'brand_id', label: 'Brand', type: 'select', options: 'brands' },
       { name: 'member_ids', label: 'Members', type: 'multi-select', options: 'wrestlers' },
-      { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'disbanded'] },
+      { name: 'status', label: 'Status', type: 'select', options: ['Active', 'Inactive', 'Disbanded'] },
     ],
     create: (d) => Store.createStable(d),
     update: (id, d) => Store.updateStable(id, d),
@@ -832,7 +1026,7 @@ const FORM_DEFS = {
       { name: 'name', label: 'Title Name', type: 'text', required: true, placeholder: 'e.g. WWE Championship' },
       { name: 'game_id', label: 'Game', type: 'select', options: 'games', required: true },
       { name: 'brand_id', label: 'Brand', type: 'select', options: 'brands' },
-      { name: 'tier', label: 'Tier', type: 'select', options: ['world', 'midcard', 'tag', 'womens_world', 'womens_midcard', 'womens_tag'] },
+      { name: 'tier', label: 'Tier', type: 'select', options: ['World', 'Midcard', 'Tag', 'Womens_World', 'Womens_Midcard', 'Womens_Tag', 'Gimmick'] },
       { name: 'holder1_id', label: 'Current Champion', type: 'select', options: 'wrestlers' },
       { name: 'holder2_id', label: 'Co-Champion (tag titles)', type: 'select', options: 'wrestlers' },
       { name: 'is_vacant', label: 'Vacant', type: 'checkbox' },
@@ -885,7 +1079,8 @@ function showForm(type, editData = null) {
         html += '<option value="">-- Select --</option>';
         if (Array.isArray(f.options)) {
           f.options.forEach(o => {
-            html += `<option value="${o}" ${String(val) === o ? 'selected' : ''}>${o}</option>`;
+            const match = String(val).toLowerCase() === String(o).toLowerCase();
+            html += `<option value="${o}" ${match ? 'selected' : ''}>${o}</option>`;
           });
         } else if (f.options === 'games') {
           app.state.games.forEach(g => {
@@ -970,12 +1165,16 @@ async function submitForm(type, editId) {
   }
 }
 
-function closeForm() {
-  document.getElementById('modalOverlay').classList.remove('show');
-  document.getElementById('modal').classList.remove('show');
-}
-
 // ── Boot ──
+// Warn before leaving page if form has unsaved changes
+window.addEventListener('beforeunload', function(e) {
+  const def = FORM_DEFS[_formState.type];
+  if (def && _formState.editId !== null && isFormDirty(def)) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     await Store.ready();

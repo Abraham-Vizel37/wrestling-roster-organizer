@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>Live Dashboard — Wrestling Roster Organizer</title>
+<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/dashboard.css?v=4">
+</head>
+<body>
+<div class="app-container">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <h2>🏟️ Live Dashboard</h2>
+    </div>
+    <ul class="nav-list">
+      <li><a href="#" onclick="showSection('overview')" class="nav-link active" data-section="overview">📊 Overview</a></li>
+      <li><a href="#" onclick="showSection('events')" class="nav-link" data-section="events">📅 Events</a></li>
+      <li><a href="#" onclick="showSection('matches')" class="nav-link" data-section="matches">🤼 Matches</a></li>
+      <li><a href="#" onclick="showSection('import')" class="nav-link" data-section="import">📥 Import</a></li>
+      <li><a href="#" onclick="showSection('export')" class="nav-link" data-section="export">📤 Export</a></li>
+      <li><a href="#" onclick="showSection('settings')" class="nav-link" data-section="settings">⚙️ Settings</a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <a href="index.html" class="nav-link">← Back to Roster Manager</a>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <main class="content">
+    <!-- Overview Section -->
+    <section id="section-overview" class="dashboard-section active">
+      <h1>📊 Overview</h1>
+      <div class="stats-grid" id="overviewStats">
+        <div class="stat-card"><div class="stat-value" id="statEvents">0</div><div class="stat-label">Events</div></div>
+        <div class="stat-card"><div class="stat-value" id="statMatches">0</div><div class="stat-label">Matches</div></div>
+        <div class="stat-card"><div class="stat-value" id="statUpcoming">0</div><div class="stat-label">Upcoming</div></div>
+        <div class="stat-card"><div class="stat-value" id="statPromotions">0</div><div class="stat-label">Promotions</div></div>
+      </div>
+
+      <h2>📰 Latest News</h2>
+      <div id="newsFeed" class="news-feed">
+        <p class="empty-state">Loading wrestling news...</p>
+      </div>
+
+      <h2>📅 Upcoming Events</h2>
+      <div id="upcomingEvents" class="table-container">
+        <p class="empty-state">No upcoming events. Import or add events to get started.</p>
+      </div>
+    </section>
+
+    <!-- Events Section -->
+    <section id="section-events" class="dashboard-section">
+      <div class="section-header">
+        <h1>📅 Events</h1>
+        <button class="btn btn-primary" onclick="showEventForm(null)">+ Add Event</button>
+      </div>
+      <div class="filters-bar">
+        <input type="search" id="searchEvent" placeholder="Search events..." oninput="renderEvents()">
+        <select id="filterPromotion" onchange="renderEvents()"><option value="">All Promotions</option></select>
+      </div>
+      <div id="eventsList" class="table-container">
+        <p class="empty-state">No events yet.</p>
+      </div>
+    </section>
+
+    <!-- Matches Section -->
+    <section id="section-matches" class="dashboard-section">
+      <div class="section-header">
+        <h1>🤼 Matches</h1>
+        <button class="btn btn-primary" onclick="showMatchForm(null)">+ Add Match</button>
+      </div>
+      <div class="filters-bar">
+        <input type="search" id="searchMatch" placeholder="Search wrestlers..." oninput="renderMatches()">
+        <select id="filterPromotionMatch" onchange="renderMatches()"><option value="">All Promotions</option></select>
+        <select id="filterMatchType" onchange="renderMatches()"><option value="">All Types</option></select>
+      </div>
+      <div id="matchesList" class="table-container">
+        <p class="empty-state">No matches yet.</p>
+      </div>
+    </section>
+
+    <!-- Import Section -->
+    <section id="section-import" class="dashboard-section">
+      <h1>📥 Import Match Data</h1>
+      <p class="section-desc">Import data from multiple sources. All data is normalised into a consistent format.</p>
+
+      <div class="import-grid">
+        <div class="import-card">
+          <h3>🏟️ Cagematch (via Parse.bot API)</h3>
+          <p>Import from the largest wrestling database. Rich data with ratings, match history, and event details.</p>
+          <div class="form-group">
+            <label>API Key (from <a href="https://parse.bot/signup" target="_blank">parse.bot</a>)</label>
+            <input type="text" id="cagematchApiKey" placeholder="Enter your Parse.bot API key">
+          </div>
+          <div class="form-group">
+            <label>Wrestler or Event name</label>
+            <input type="text" id="cagematchQuery" placeholder="e.g. Kenny Omega, WrestleMania">
+          </div>
+          <button class="btn btn-primary" onclick="importCagematch()">Search & Import</button>
+          <div id="cagematchResults" class="import-results"></div>
+        </div>
+
+        <div class="import-card">
+          <h3>📡 OWDB (Open Wrestling Database)</h3>
+          <p>Free REST API with multi-source aggregated data. No API key required.</p>
+          <div class="form-group">
+            <label>Search</label>
+            <input type="text" id="owdbQuery" placeholder="e.g. Kenny Omega, AEW Dynamite">
+          </div>
+          <button class="btn btn-primary" onclick="importOwdb()">Search & Import</button>
+          <div id="owdbResults" class="import-results"></div>
+        </div>
+
+        <div class="import-card">
+          <h3>📁 Import from File</h3>
+          <p>Upload a JSON file in the universal format. Compatible with exports from this dashboard or external tools.</p>
+          <input type="file" id="fileImport" accept=".json" onchange="importFromFile(event)">
+          <div id="fileImportResults" class="import-results"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Export Section -->
+    <section id="section-export" class="dashboard-section">
+      <h1>📤 Export Data</h1>
+      <p class="section-desc">Export all match and event data in the universal JSON format.</p>
+      <div class="export-options">
+        <button class="btn btn-primary" onclick="exportAll()">📦 Export All (JSON)</button>
+        <button class="btn btn-secondary" onclick="exportEvents()">📅 Export Events Only</button>
+        <button class="btn btn-secondary" onclick="exportMatches()">🤼 Export Matches Only</button>
+      </div>
+      <div id="exportPreview" class="export-preview" style="display:none;">
+        <h3>Preview</h3>
+        <pre id="exportJson"></pre>
+        <button class="btn btn-primary" onclick="downloadExport()">⬇️ Download JSON</button>
+      </div>
+    </section>
+
+    <!-- Settings Section -->
+    <section id="section-settings" class="dashboard-section">
+      <h1>⚙️ Settings</h1>
+      <div class="settings-card">
+        <h3>Data Sources</h3>
+        <div class="form-group">
+          <label>Parse.bot API Key (stored locally, never sent elsewhere)</label>
+          <input type="password" id="settingsApiKey" placeholder="Enter Parse.bot API key">
+        </div>
+        <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+      </div>
+      <div class="settings-card">
+        <h3>Data Management</h3>
+        <button class="btn btn-danger" onclick="if(confirm('Delete ALL match and event data? This cannot be undone.')) clearAllData()">🗑️ Clear All Data</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Modal -->
+<div id="modalOverlay" class="modal-overlay"></div>
+<div id="modal" class="modal">
+  <div class="modal-header">
+    <h3 id="modalTitle">Title</h3>
+    <button class="modal-close" onclick="closeDashboardForm()">&times;</button>
+  </div>
+  <div class="modal-body" id="modalBody"></div>
+</div>
+
+<script src="js/store.js?v=4"></script>
+<script src="js/dashboard-store.js?v=4"></script>
+<script src="js/dashboard-app.js?v=4"></script>
+</body>
+</html>
