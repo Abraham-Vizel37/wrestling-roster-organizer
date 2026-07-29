@@ -24,7 +24,7 @@ const app = {
     await this.loadAll();
   },
 
-  async loadAll() {
+  async loadAll(skipNavigate = false) {
     this.showLoading(true);
     try {
       const dash = await Store.getDashboard();
@@ -44,8 +44,11 @@ const app = {
       this.loadStables();
       this.loadChampionships();
 
-      // Navigate to hash-based view
-      this.navigate(window.location.hash || '#dashboard');
+      // Navigate to hash-based view (skip when called from loadImportView
+      // to avoid infinite recursion)
+      if (!skipNavigate) {
+        this.navigate(window.location.hash || '#dashboard');
+      }
     } catch (err) {
       this.showError(err.message);
     }
@@ -551,7 +554,7 @@ const app = {
 
   // Called when navigating to import view
   async loadImportView() {
-    await this.loadAll(); // ensures games loaded
+    await this.loadAll(true); // ensures games loaded, skip navigate to avoid recursion
     const exportSel = document.getElementById('exportGameSelect');
     const importCatSel = document.getElementById('importCategoryGameSelect');
     const games = this.state.games;
