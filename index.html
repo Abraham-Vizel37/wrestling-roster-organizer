@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Wrestling Roster Organizer</title>
+<link rel="stylesheet" href="css/style.css?v=2">
+</head>
+<body>
+
+<!-- ===== TOP NAV ===== -->
+<header class="topbar" role="banner">
+  <div class="topbar-inner">
+    <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">☰</button>
+    <h1 class="app-title">Wrestling Roster Organizer</h1>
+  </div>
+</header>
+
+<!-- ===== SIDEBAR ===== -->
+<nav class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
+  <ul class="nav-list">
+    <li><a href="#dashboard" class="nav-link active" data-view="dashboard">📊 Dashboard</a></li>
+    <li><a href="#games" class="nav-link" data-view="games">🎮 Games</a></li>
+    <li><a href="#brands" class="nav-link" data-view="brands">🏷️ Brands</a></li>
+    <li><a href="#roster" class="nav-link" data-view="roster">👤 Roster</a></li>
+    <li><a href="#tag-teams" class="nav-link" data-view="tag-teams">🤝 Tag Teams</a></li>
+    <li><a href="#stables" class="nav-link" data-view="stables">🏰 Stables</a></li>
+    <li><a href="#championships" class="nav-link" data-view="championships">👑 Championships</a></li>
+    <li><a href="#import" class="nav-link" data-view="import">📥 Import/Export</a></li>
+  </ul>
+</nav>
+
+<!-- ===== OVERLAY (mobile sidebar) ===== -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<!-- ===== LOADING OVERLAY (on first load while seed data extracts) ===== -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <p class="loading-text" id="loadingText">Loading roster data...</p>
+</div>
+
+<!-- ===== MAIN CONTENT ===== -->
+<main class="content" id="mainContent" role="main">
+
+  <!-- Loading indicator -->
+  <div class="loading" id="loadingIndicator" aria-live="polite">Loading...</div>
+
+  <!-- Dashboard View -->
+  <section class="view active" id="view-dashboard">
+    <h2>Dashboard</h2>
+    <div class="stats-grid" id="dashboardStats"></div>
+    <div class="game-list" id="dashboardGames"></div>
+  </section>
+
+  <!-- Games View -->
+  <section class="view" id="view-games">
+    <div class="view-header">
+      <h2>Games</h2>
+      <button class="btn btn-primary" onclick="showForm('game')">+ New Game</button>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table" id="gamesTable">
+        <thead><tr><th>Name</th><th>Platform</th><th>Year</th><th>Brands</th><th>Wrestlers</th><th>Actions</th></tr></thead>
+        <tbody id="gamesTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Brands View -->
+  <section class="view" id="view-brands">
+    <div class="view-header">
+      <h2>Brands</h2>
+      <button class="btn btn-primary" onclick="showForm('brand')">+ New Brand</button>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table" id="brandsTable">
+        <thead><tr><th>Name</th><th>Game</th><th>GM</th><th>Status</th><th>Wrestlers</th><th>Titles</th><th>Actions</th></tr></thead>
+        <tbody id="brandsTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Roster View -->
+  <section class="view" id="view-roster">
+    <div class="view-header">
+      <h2>Roster</h2>
+      <button class="btn btn-primary" onclick="showForm('wrestler')">+ Add Wrestler</button>
+    </div>
+    <div class="filters-bar" id="rosterFilters">
+      <select id="filterGame" onchange="app.loadRoster()"><option value="">All Games</option></select>
+      <select id="filterBrand" onchange="app.loadRoster()"><option value="">All Brands</option></select>
+      <select id="filterAlignment" onchange="app.loadRoster()"><option value="">All Alignments</option>
+        <option value="face">Face</option><option value="heel">Heel</option><option value="tweener">Tweener</option>
+      </select>
+      <select id="filterGender" onchange="app.loadRoster()"><option value="">All Genders</option>
+        <option value="male">Male</option><option value="female">Female</option>
+      </select>
+      <select id="filterStatus" onchange="app.loadRoster()"><option value="">All Status</option>
+        <option value="active">Active</option><option value="injured">Injured</option><option value="released">Released</option>
+      </select>
+      <input type="search" id="searchWrestler" placeholder="Search..." oninput="app.loadRoster()">
+    </div>
+    <div class="table-responsive">
+      <table class="data-table" id="rosterTable">
+        <thead><tr>
+          <th class="sortable" onclick="app.sortRoster('name')">Name ↕</th>
+          <th class="sortable" onclick="app.sortRoster('brand_id')">Brand ↕</th>
+          <th class="sortable" onclick="app.sortRoster('gender')">Gender ↕</th>
+          <th class="sortable" onclick="app.sortRoster('alignment')">Alignment ↕</th>
+          <th class="sortable" onclick="app.sortRoster('status')">Status ↕</th>
+          <th class="sortable" onclick="app.sortRoster('power')">Rating ↕</th>
+          <th>CAW</th><th>W/L</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="rosterTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Tag Teams View -->
+  <section class="view" id="view-tag-teams">
+    <div class="view-header">
+      <h2>Tag Teams</h2>
+      <button class="btn btn-primary" onclick="showForm('tag-team')">+ New Tag Team</button>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table" id="tagTeamsTable">
+        <thead><tr><th>Name</th><th>Brand</th><th>Member 1</th><th>Member 2</th><th>Alignment</th><th>Status</th><th>W/L</th><th>Actions</th></tr></thead>
+        <tbody id="tagTeamsTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Stables View -->
+  <section class="view" id="view-stables">
+    <div class="view-header">
+      <h2>Stables</h2>
+      <button class="btn btn-primary" onclick="showForm('stable')">+ New Stable</button>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table" id="stablesTable">
+        <thead><tr><th>Name</th><th>Brand</th><th>Members</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="stablesTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Championships View -->
+  <section class="view" id="view-championships">
+    <div class="view-header">
+      <h2>Championships</h2>
+      <button class="btn btn-primary" onclick="showForm('championship')">+ New Title</button>
+    </div>
+    <div class="table-responsive">
+      <table class="data-table" id="champsTable">
+        <thead><tr><th>Title</th><th>Brand</th><th>Tier</th><th>Champion(s)</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="champsTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== IMPORT / EXPORT VIEW ===== -->
+  <section class="view" id="view-import">
+    <h2>Import / Export</h2>
+
+    <!-- ── SECTION: EXPORT ── -->
+    <div class="card">
+      <h3>📥 Export Game Data</h3>
+      <p class="card-desc">Download full game data — or just a specific category — as JSON.</p>
+      <div class="form-row">
+        <select id="exportGameSelect" onchange="app.onExportGameSelect()"><option value="">Select a game...</option></select>
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="app.exportAndDownload()" title="Export all data for this game">Full Export</button>
+        </div>
+      </div>
+      <div class="card-subsection" id="exportCategorySection" style="display:none;">
+        <select id="exportCategorySelect">
+          <option value="">— Export specific category —</option>
+          <option value="brands">🏷️ Brands</option>
+          <option value="wrestlers">👤 Wrestlers</option>
+          <option value="tag-teams">🤝 Tag Teams</option>
+          <option value="stables">🏰 Stables</option>
+          <option value="championships">👑 Championships</option>
+        </select>
+        <button class="btn btn-secondary" onclick="app.exportAndDownloadCategory()">Download Category</button>
+      </div>
+    </div>
+
+    <!-- ── SECTION: FULL GAME IMPORT ── -->
+    <div class="card">
+      <h3>📤 Import Full Game</h3>
+      <p class="card-desc">Upload a previously exported JSON file to restore or clone a complete game with all data.</p>
+      <div class="form-row">
+        <div class="file-input-wrap">
+          <input type="file" id="importFileInput" accept=".json" onchange="app.onImportFileSelect()">
+          <span class="file-name" id="importFileName">No file selected</span>
+        </div>
+        <button class="btn btn-primary" id="importBtn" onclick="app.importGameFromFile()" disabled>📤 Import Game</button>
+      </div>
+      <div id="importResult" class="import-result"></div>
+      <div class="import-preview" id="importPreview" style="display:none;">
+        <h4>File Preview</h4>
+        <pre id="importPreviewContent"></pre>
+      </div>
+    </div>
+
+    <!-- ── SECTION: CATEGORY IMPORT ── -->
+    <div class="card">
+      <h3>📤 Category Import</h3>
+      <p class="card-desc">Import data for a single category into an existing game. Perfect for adding wrestlers, titles, or teams from external spreadsheets.</p>
+      <div class="form-row">
+        <select id="importCategoryGameSelect"><option value="">Select game...</option></select>
+        <select id="importCategorySelect">
+          <option value="">— Category —</option>
+          <option value="brands">🏷️ Brands</option>
+          <option value="wrestlers">👤 Wrestlers</option>
+          <option value="tag-teams">🤝 Tag Teams</option>
+          <option value="stables">🏰 Stables</option>
+          <option value="championships">👑 Championships</option>
+        </select>
+        <div class="file-input-wrap">
+          <input type="file" id="importCategoryFileInput" accept=".json" onchange="app.onCategoryFileSelect()">
+          <span class="file-name" id="catFileName">No file selected</span>
+        </div>
+        <button class="btn btn-primary" id="importCategoryBtn" onclick="app.importCategoryFromFile()" disabled>📤 Import</button>
+      </div>
+      <div id="catImportResult" class="import-result"></div>
+    </div>
+
+    <!-- ── SECTION: SAMPLE TEMPLATES ── -->
+    <div class="card">
+      <h3>📋 Sample Import Templates</h3>
+      <p class="card-desc">Download ready-to-use JSON templates for each category. Fill them out externally and import via the sections above.</p>
+      <div class="sample-grid">
+        <button class="sample-btn" onclick="app.downloadSample('full-game')">
+          <span class="sample-icon">📦</span>
+          <span class="sample-label">Full Game</span>
+          <span class="sample-desc">Complete game with brands, wrestlers, teams, titles</span>
+        </button>
+        <button class="sample-btn" onclick="app.downloadSample('brands')">
+          <span class="sample-icon">🏷️</span>
+          <span class="sample-label">Brands</span>
+          <span class="sample-desc">Show/split definitions with colors</span>
+        </button>
+        <button class="sample-btn" onclick="app.downloadSample('wrestlers')">
+          <span class="sample-icon">👤</span>
+          <span class="sample-label">Wrestlers</span>
+          <span class="sample-desc">Roster members with ratings and details</span>
+        </button>
+        <button class="sample-btn" onclick="app.downloadSample('tag-teams')">
+          <span class="sample-icon">🤝</span>
+          <span class="sample-label">Tag Teams</span>
+          <span class="sample-desc">Tag team pairings</span>
+        </button>
+        <button class="sample-btn" onclick="app.downloadSample('stables')">
+          <span class="sample-icon">🏰</span>
+          <span class="sample-label">Stables</span>
+          <span class="sample-desc">Factions with multiple members</span>
+        </button>
+        <button class="sample-btn" onclick="app.downloadSample('championships')">
+          <span class="sample-icon">👑</span>
+          <span class="sample-label">Championships</span>
+          <span class="sample-desc">Title belts with holders and tiers</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── SECTION: DATABASE INFO ── -->
+    <div class="card">
+      <h3>🔧 Database Status</h3>
+      <div id="dbInfoContent">
+        <button class="btn btn-secondary" onclick="app.refreshDbInfo()">Refresh Status</button>
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+<!-- ===== MODAL ===== -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeForm()"></div>
+<div class="modal" id="modal" role="dialog" aria-labelledby="modalTitle">
+  <div class="modal-header">
+    <h3 id="modalTitle">Form</h3>
+    <button class="modal-close" onclick="closeForm()" aria-label="Close">&times;</button>
+  </div>
+  <div class="modal-body" id="modalBody"></div>
+</div>
+
+<!-- ===== SCRIPTS ===== -->
+<script src="js/store.js?v=1"></script>
+<script src="js/app.js?v=2"></script>
+</body>
+</html>
