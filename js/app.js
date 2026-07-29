@@ -27,7 +27,7 @@ const app = {
   async loadAll() {
     this.showLoading(true);
     try {
-      const dash = await API.getDashboard();
+      const dash = await Store.getDashboard();
       this.state.games = dash.games || [];
 
       if (dash.games && dash.games.length > 0) {
@@ -99,7 +99,7 @@ const app = {
   async loadDashboard() {
     this.showLoading(true);
     try {
-      const dash = await API.getDashboard();
+      const dash = await Store.getDashboard();
       this.state.games = dash.games || [];
       this.renderDashboard(dash);
     } catch (err) {
@@ -137,7 +137,7 @@ const app = {
   async renderGames() {
     this.showLoading(true);
     try {
-      const games = await API.getGames();
+      const games = await Store.getGames();
       this.state.games = games;
       this.populateGameSelects();
       const tbody = document.getElementById('gamesTableBody');
@@ -173,7 +173,7 @@ const app = {
   async deleteGame(id) {
     if (!confirm('Delete this game and ALL its data? This cannot be undone.')) return;
     try {
-      await API.deleteGame(id);
+      await Store.deleteGame(id);
       this.showToast('Game deleted');
       await this.loadAll();
     } catch (err) {
@@ -186,7 +186,7 @@ const app = {
     this.showLoading(true);
     try {
       const gameId = this.state.activeGameId;
-      const brands = await API.getBrands(gameId || undefined);
+      const brands = await Store.getBrands(gameId || undefined);
       this.state.brands = brands;
       const tbody = document.getElementById('brandsTableBody');
       if (brands.length === 0) {
@@ -221,7 +221,7 @@ const app = {
   async deleteBrand(id) {
     if (!confirm('Delete this brand? Wrestlers will be unlinked.')) return;
     try {
-      await API.deleteBrand(id);
+      await Store.deleteBrand(id);
       this.showToast('Brand deleted');
       this.loadBrands();
     } catch (err) {
@@ -253,7 +253,7 @@ const app = {
       params.sort_by = this.state.rosterSortBy;
       params.sort_dir = this.state.rosterSortDir;
 
-      const wrestlers = await API.getWrestlers(params);
+      const wrestlers = await Store.getWrestlers(params);
       this.state.wrestlers = wrestlers;
       this.renderRoster(wrestlers);
     } catch (err) {
@@ -304,7 +304,7 @@ const app = {
   async deleteWrestler(id) {
     if (!confirm('Delete this wrestler?')) return;
     try {
-      await API.deleteWrestler(id);
+      await Store.deleteWrestler(id);
       this.showToast('Wrestler deleted');
       this.loadRoster();
     } catch (err) {
@@ -317,7 +317,7 @@ const app = {
     this.showLoading(true);
     try {
       const gameId = this.state.activeGameId;
-      const teams = await API.getTagTeams(gameId || undefined);
+      const teams = await Store.getTagTeams(gameId || undefined);
       this.state.tagTeams = teams;
       const tbody = document.getElementById('tagTeamsTableBody');
       if (teams.length === 0) {
@@ -353,7 +353,7 @@ const app = {
   async deleteTagTeam(id) {
     if (!confirm('Delete this tag team?')) return;
     try {
-      await API.deleteTagTeam(id);
+      await Store.deleteTagTeam(id);
       this.showToast('Tag team deleted');
       this.loadTagTeams();
     } catch (err) {
@@ -366,7 +366,7 @@ const app = {
     this.showLoading(true);
     try {
       const gameId = this.state.activeGameId;
-      const stables = await API.getStables(gameId || undefined);
+      const stables = await Store.getStables(gameId || undefined);
       this.state.stables = stables;
       const tbody = document.getElementById('stablesTableBody');
       if (stables.length === 0) {
@@ -399,7 +399,7 @@ const app = {
   async deleteStable(id) {
     if (!confirm('Delete this stable?')) return;
     try {
-      await API.deleteStable(id);
+      await Store.deleteStable(id);
       this.showToast('Stable deleted');
       this.loadStables();
     } catch (err) {
@@ -412,7 +412,7 @@ const app = {
     this.showLoading(true);
     try {
       const gameId = this.state.activeGameId;
-      const champs = await API.getChampionships(gameId || undefined);
+      const champs = await Store.getChampionships(gameId || undefined);
       this.state.champs = champs;
       const tbody = document.getElementById('champsTableBody');
       if (champs.length === 0) {
@@ -446,7 +446,7 @@ const app = {
   async deleteChampionship(id) {
     if (!confirm('Delete this championship?')) return;
     try {
-      await API.deleteChampionship(id);
+      await Store.deleteChampionship(id);
       this.showToast('Championship deleted');
       this.loadChampionships();
     } catch (err) {
@@ -460,7 +460,7 @@ const app = {
     const gameId = select.value;
     if (!gameId) return alert('Select a game first.');
     try {
-      const data = await API.exportGame(gameId);
+      const data = await Store.exportGame(gameId);
       const game = this.state.games.find(g => g.id == gameId);
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -481,7 +481,7 @@ const app = {
     try {
       const text = await input.files[0].text();
       const data = JSON.parse(text);
-      const result = await API.importGame(data);
+      const result = await Store.importGame(data);
       document.getElementById('importResult').innerHTML =
         `<div class="alert alert-success">Imported: ${result.games_created} games, ${result.brands_created} brands, ${result.wrestlers_created} wrestlers, ${result.tag_teams_created} tag teams, ${result.stables_created} stables, ${result.championships_created} titles.</div>`;
       if (result.errors.length) {
@@ -576,7 +576,7 @@ const app = {
     const gameId = sel.value;
     if (!gameId) return this.showToast('Select a game first.');
     try {
-      const blob = await API.downloadExport(gameId);
+      const blob = await Store.downloadExport(gameId);
       const game = this.state.games.find(g => g.id == gameId);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -597,7 +597,7 @@ const app = {
     if (!gameId) return this.showToast('Select a game first.');
     if (!category) return this.showToast('Select a category.');
     try {
-      const blob = await API.downloadExport(gameId, category);
+      const blob = await Store.downloadExport(gameId, category);
       const game = this.state.games.find(g => g.id == gameId);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -654,7 +654,7 @@ const app = {
     try {
       const text = await input.files[0].text();
       const data = JSON.parse(text);
-      const result = await API.importGame(data);
+      const result = await Store.importGame(data);
       resultDiv.innerHTML =
         `<div class="alert alert-success">✅ Imported: ${result.games_created} game(s), ${result.brands_created} brand(s), ${result.wrestlers_created} wrestler(s), ${result.tag_teams_created} tag team(s), ${result.stables_created} stable(s), ${result.championships_created} title(s).</div>`;
       if (result.errors && result.errors.length) {
@@ -692,7 +692,7 @@ const app = {
       let items = JSON.parse(text);
       // Accept both single object and array
       if (!Array.isArray(items)) items = [items];
-      const result = await API.importCategory(gameId, category, items);
+      const result = await Store.importCategory(gameId, category, items);
       const count = result.imported || items.length;
       const errors = result.errors || [];
       let html = `<div class="alert alert-success">✅ Imported ${count} ${category}.\n`;
@@ -710,7 +710,7 @@ const app = {
 
   async downloadSample(category) {
     try {
-      const data = await API.getSample(category);
+      const data = await Store.getSample(category);
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -726,7 +726,7 @@ const app = {
   async refreshDbInfo() {
     const container = document.getElementById('dbInfoContent');
     try {
-      const info = await API.getDbInfo();
+      const info = await Store.getDbInfo();
       const rc = info.row_counts || {};
       const pr = info.pragmas || {};
       const total = Object.values(rc).reduce((a, b) => a + b, 0);
@@ -763,8 +763,8 @@ const FORM_DEFS = {
       { name: 'year', label: 'Year', type: 'number' },
       { name: 'description', label: 'Description', type: 'textarea' },
     ],
-    create: (d) => API.createGame(d),
-    update: (id, d) => API.updateGame(id, d),
+    create: (d) => Store.createGame(d),
+    update: (id, d) => Store.updateGame(id, d),
   },
   brand: {
     title: 'Brand',
@@ -776,8 +776,8 @@ const FORM_DEFS = {
       { name: 'show_status', label: 'Status', type: 'select', options: ['active', 'inactive', 'archived'] },
       { name: 'sort_order', label: 'Sort Order', type: 'number' },
     ],
-    create: (d) => API.createBrand(d),
-    update: (id, d) => API.updateBrand(id, d),
+    create: (d) => Store.createBrand(d),
+    update: (id, d) => Store.updateBrand(id, d),
   },
   wrestler: {
     title: 'Wrestler',
@@ -794,8 +794,8 @@ const FORM_DEFS = {
       { name: 'is_caw', label: 'Created Wrestler (CAW)', type: 'checkbox' },
       { name: 'notes', label: 'Notes', type: 'textarea' },
     ],
-    create: (d) => API.createWrestler(d),
-    update: (id, d) => API.updateWrestler(id, d),
+    create: (d) => Store.createWrestler(d),
+    update: (id, d) => Store.updateWrestler(id, d),
   },
   'tag-team': {
     title: 'Tag Team',
@@ -808,8 +808,8 @@ const FORM_DEFS = {
       { name: 'alignment', label: 'Alignment', type: 'select', options: ['face', 'heel', 'tweener'] },
       { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'disbanded'] },
     ],
-    create: (d) => API.createTagTeam(d),
-    update: (id, d) => API.updateTagTeam(id, d),
+    create: (d) => Store.createTagTeam(d),
+    update: (id, d) => Store.updateTagTeam(id, d),
   },
   stable: {
     title: 'Stable',
@@ -820,8 +820,8 @@ const FORM_DEFS = {
       { name: 'member_ids', label: 'Members', type: 'multi-select', options: 'wrestlers' },
       { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'disbanded'] },
     ],
-    create: (d) => API.createStable(d),
-    update: (id, d) => API.updateStable(id, d),
+    create: (d) => Store.createStable(d),
+    update: (id, d) => Store.updateStable(id, d),
   },
   championship: {
     title: 'Championship',
@@ -835,8 +835,8 @@ const FORM_DEFS = {
       { name: 'is_vacant', label: 'Vacant', type: 'checkbox' },
       { name: 'notes', label: 'Notes', type: 'textarea' },
     ],
-    create: (d) => API.createChampionship(d),
-    update: (id, d) => API.updateChampionship(id, d),
+    create: (d) => Store.createChampionship(d),
+    update: (id, d) => Store.updateChampionship(id, d),
   },
 };
 
@@ -973,4 +973,11 @@ function closeForm() {
 }
 
 // ── Boot ──
-document.addEventListener('DOMContentLoaded', () => app.init());
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    await Store.ready();
+    app.init();
+  } catch (err) {
+    document.getElementById('loadingMsg').textContent = 'Error loading data: ' + err.message;
+  }
+});

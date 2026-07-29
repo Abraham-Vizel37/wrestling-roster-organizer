@@ -543,6 +543,17 @@ const Store = (() => {
     return new Blob([json], { type: 'application/json' });
   }
 
+  async function exportGame(gameId) {
+    const game = findRow('games', gameId);
+    if (!game) throw new Error('Game not found');
+    const brands = (data.brands || []).filter(b => b.game_id == gameId);
+    const wrestlers = (data.wrestlers || []).filter(w => w.game_id == gameId);
+    const tag_teams = (data.tag_teams || []).filter(t => t.game_id == gameId);
+    const stables = (data.stables || []).filter(s => s.game_id == gameId);
+    const championships = (data.championships || []).filter(c => c.game_id == gameId);
+    return { game, brands, wrestlers, tag_teams, stables, championships };
+  }
+
   async function getSample(category) {
     if (category === 'full-game') {
       const game = data.games[0] || { name: 'My Game', platform: 'Multi', year: 2025 };
@@ -602,7 +613,7 @@ const Store = (() => {
     // Dashboard
     getDashboard,
     // Import/Export
-    importGame, importCategory, downloadExport, getSample,
+    importGame, importCategory, downloadExport, getSample, exportGame,
     // Monitoring
     getDbInfo,
     // Control
