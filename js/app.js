@@ -978,6 +978,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await Store.ready();
     app.init();
   } catch (err) {
-    document.getElementById('loadingMsg').textContent = 'Error loading data: ' + err.message;
+    document.getElementById('loadingText').textContent = 'Error: ' + err.message;
+  } finally {
+    const ov = document.getElementById('loadingOverlay');
+    if (ov) ov.style.display = 'none';
   }
 });
