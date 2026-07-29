@@ -36,6 +36,12 @@
 <!-- ===== OVERLAY (mobile sidebar) ===== -->
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
+<!-- ===== LOADING OVERLAY (on first load while seed data extracts) ===== -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <p class="loading-text" id="loadingText">Loading roster data...</p>
+</div>
+
 <!-- ===== MAIN CONTENT ===== -->
 <main class="content" id="mainContent" role="main">
 
@@ -284,7 +290,7 @@
 </div>
 
 <!-- ===== SCRIPTS ===== -->
-<script src="js/api.js?v=2"></script>
+<script src="js/store.js?v=1"></script>
 <script src="js/app.js?v=2"></script>
 </body>
 </html>
