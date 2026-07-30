@@ -112,7 +112,7 @@ const carousel = {
     if (!track || !dots) return;
 
     track.innerHTML = this.slides.map((s, i) => `
-      <div class="carousel-slide" style="display:${i === this.index ? 'flex' : 'none'}">
+      <div class="carousel-slide" style="display:${i === this.index ? 'flex' : 'none'}${s.url ? ';cursor:pointer' : ''}"${s.url ? ` onclick="window.open('${esc(s.url)}','_blank')"` : ''}>
         <div class="carousel-content">
           <span class="carousel-promo-badge badge-${s.promoClass || 'default'}">${esc(s.promotion || '')}</span>
           <div class="carousel-title">${esc(s.name)}</div>
@@ -123,6 +123,7 @@ const carousel = {
             ${s.event_type ? `<span>🎫 ${esc(s.event_type)}</span>` : ''}
           </div>
           ${s.desc ? `<div class="carousel-desc">${esc(s.desc)}</div>` : ''}
+          ${s.url ? '<div style="margin-top:12px;"><span style="color:var(--accent);font-size:13px;">🔗 View on source site ↗</span></div>' : ''}
         </div>
       </div>
     `).join('');
@@ -172,7 +173,8 @@ async function initCarousel() {
     venue: e.venue || '',
     location: e.location || '',
     event_type: e.event_type || '',
-    desc: e.description || `${e.promotion} presents ${e.name}${e.venue ? ' at ' + e.venue : ''}${e.location ? ' in ' + e.location : ''}.`,
+    url: e.url || (e.source === 'cagematch' && e.source_id ? cagematchUrl(e.source_id) : ''),
+    desc: e.description || `${e.promotion} presents ${e.name}${e.venue ? ' at ' + e.venue : ''}${e.location ? ' in ' + e.location : ''}.${e.url ? ' Click to view details.' : ''}`,
   }));
 
   carousel.init(slides);
@@ -231,6 +233,16 @@ async function loadOverview() {
   document.getElementById('recentCount').textContent = recent.length;
   renderEventCards(recentContainer, recent.slice(0, 6), 'recentEvents');
 
+  // Recent matches
+  const allMatches = await DashboardStore.getAllMatches();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 14);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const recentMatches = allMatches.filter(m => m.date >= cutoffStr).sort((a,b) => b.date.localeCompare(a.date) || a.event_name.localeCompare(b.event_name)).slice(0, 8);
+  const recentMatchContainer = document.getElementById('recentMatches');
+  document.getElementById('recentMatchCount').textContent = recentMatches.length;
+  renderMiniMatchCards(recentMatchContainer, recentMatches, events);
+
   // News feed
   fetchNews();
 }
@@ -253,7 +265,8 @@ function renderEventCards(container, events, prefix) {
     const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna','New Japan Pro-Wrestling':'njpw','Ring of Honor':'roh' };
     const promoClass = promoMap[e.promotion] || '';
     const isUpcoming = e.date >= new Date().toISOString().split('T')[0];
-    return `
+    const sourceUrl = e.url || (e.source === 'cagematch' && e.source_id ? cagematchUrl(e.source_id) : '');
+    const cardContent = `
       <div class="dash-card promo-${promoClass}">
         <div class="dash-card-header">
           <div>
@@ -271,8 +284,48 @@ function renderEventCards(container, events, prefix) {
           <span>📅 ${e.date || 'TBD'}</span>
           ${e.rating ? '<span>⭐ ' + e.rating.toFixed(1) + '</span>' : ''}
           ${e.attendance ? '<span>👥 ' + e.attendance.toLocaleString() + '</span>' : ''}
+          ${sourceUrl ? '<span style="margin-left:auto;color:var(--accent);font-size:11px;">🔗 View Source ↗</span>' : ''}
         </div>
       </div>`;
+    return sourceUrl
+      ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener" class="dash-card-link promo-${promoClass}">${cardContent}</a>`
+      : `<div class="promo-${promoClass}">${cardContent}</div>`;
+  }).join('');
+}
+
+function renderMiniMatchCards(container, matches, events) {
+  if (!matches.length) {
+    container.innerHTML = '<div class="dash-card" style="grid-column:1/-1;"><div class="empty-state" style="padding:20px;"><div class="icon">🤼</div><h3>No recent matches</h3><p>Match data from the past 2 weeks will appear here.</p></div></div>';
+    return;
+  }
+  const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna','New Japan Pro-Wrestling':'njpw','Ring of Honor':'roh' };
+  container.innerHTML = matches.map(m => {
+    const promoClass = promoMap[m.promotion] || '';
+    let matchUrl = m.url || '';
+    if (!matchUrl && m.event_id) {
+      const ev = events.find(e => e.id === m.event_id);
+      if (ev && ev.url) matchUrl = ev.url;
+    }
+    if (!matchUrl && m.source === 'cagematch' && m.source_id) matchUrl = cagematchUrl(m.source_id);
+    const card = `
+      <div class="dash-card promo-${promoClass}" style="cursor:${matchUrl ? 'pointer' : 'default'}">
+        <div class="dash-card-header">
+          <div>
+            <div class="dash-card-title" style="font-size:14px;">${esc(m.participants.join(' vs '))}</div>
+            <div class="dash-card-sub" style="font-size:12px;">${m.winner ? '🏆 ' + esc(m.winner) : 'Result TBD'}</div>
+          </div>
+          <span class="card-promo-badge">${esc(m.match_type)}</span>
+        </div>
+        <div class="dash-card-body" style="font-size:12px;">${m.event_name ? esc(m.event_name) : ''}</div>
+        <div class="dash-card-meta" style="font-size:12px;">
+          <span>📅 ${m.date}</span>
+          ${m.rating != null ? '<span>⭐ ' + m.rating.toFixed(1) + '</span>' : ''}
+          ${matchUrl ? '<span style="margin-left:auto;font-size:11px;color:var(--accent);">🔗</span>' : ''}
+        </div>
+      </div>`;
+    return matchUrl
+      ? `<a href="${esc(matchUrl)}" target="_blank" rel="noopener" class="dash-card-link promo-${promoClass}">${card}</a>`
+      : `<div class="promo-${promoClass}">${card}</div>`;
   }).join('');
 }
 
@@ -289,13 +342,14 @@ async function fetchNews() {
       container.innerHTML = recent.map(e => {
         const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna' };
         const promoClass = promoMap[e.promotion] || '';
+        const sourceUrl = e.url || (e.source === 'cagematch' && e.source_id ? cagematchUrl(e.source_id) : '');
         return `
         <div class="dash-card promo-${promoClass}" style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;">
           <div style="display:flex;align-items:center;gap:12px;">
             <span style="font-size:18px;">📰</span>
             <div>
-              <strong>${esc(e.promotion)}</strong> — ${esc(e.name)}
-              <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📅 ${e.date}${e.venue ? ' · ' + esc(e.venue) : ''}</div>
+              ${sourceUrl ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;"><strong>${esc(e.promotion)}</strong> — ${esc(e.name)}</a>` : `<strong>${esc(e.promotion)}</strong> — ${esc(e.name)}`}
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📅 ${e.date}${e.venue ? ' · ' + esc(e.venue) : ''}${sourceUrl ? ' · 🔗' : ''}</div>
             </div>
           </div>
           <span class="card-promo-badge">${esc(e.event_type || 'Event')}</span>
@@ -352,7 +406,8 @@ async function renderEvents() {
   container.innerHTML = filtered.map(e => {
     const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna','New Japan Pro-Wrestling':'njpw','Ring of Honor':'roh' };
     const promoClass = promoMap[e.promotion] || '';
-    return `
+    const sourceUrl = e.url || (e.source === 'cagematch' && e.source_id ? cagematchUrl(e.source_id) : '');
+    const cardContent = `
       <div class="dash-card promo-${promoClass}">
         <div class="dash-card-header">
           <div>
@@ -360,8 +415,8 @@ async function renderEvents() {
             <div class="dash-card-sub">${esc(e.promotion)}${e.event_type ? ' · ' + esc(e.event_type) : ''}</div>
           </div>
           <div style="display:flex;gap:6px;">
-            <button class="btn btn-sm" onclick="showEventForm('${e.id}')">✏️</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteEvent('${e.id}')">🗑️</button>
+            <button class="btn btn-sm" onclick="event.stopPropagation();showEventForm('${e.id}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteEvent('${e.id}')">🗑️</button>
           </div>
         </div>
         <div class="dash-card-body">${e.venue || ''}${e.venue && e.location ? ', ' : ''}${e.location || 'Location TBD'}</div>
@@ -369,9 +424,12 @@ async function renderEvents() {
           <span>📅 ${e.date || 'TBD'}</span>
           ${e.rating ? '<span>⭐ ' + e.rating.toFixed(1) + '</span>' : ''}
           ${e.attendance ? '<span>👥 ' + e.attendance.toLocaleString() + '</span>' : ''}
-          <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${e.source || 'manual'}</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${e.source || 'manual'}${sourceUrl ? ' · 🔗' : ''}</span>
         </div>
       </div>`;
+    return sourceUrl
+      ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener" class="dash-card-link promo-${promoClass}">${cardContent}</a>`
+      : `<div class="promo-${promoClass}">${cardContent}</div>`;
   }).join('');
 }
 
@@ -423,7 +481,14 @@ async function renderMatches() {
   container.innerHTML = filtered.map(m => {
     const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna','New Japan Pro-Wrestling':'njpw','Ring of Honor':'roh' };
     const promoClass = promoMap[m.promotion] || '';
-    return `
+    // Build source URL: match's own url, or event's url via event_id, or cagematch
+    let matchUrl = m.url || '';
+    if (!matchUrl && m.event_id) {
+      const ev = all.find(e => e.id === m.event_id);
+      if (ev && ev.url) matchUrl = ev.url;
+    }
+    if (!matchUrl && m.source === 'cagematch' && m.source_id) matchUrl = cagematchUrl(m.source_id);
+    const cardContent = `
       <div class="dash-card promo-${promoClass}">
         <div class="dash-card-header">
           <div>
@@ -431,8 +496,8 @@ async function renderMatches() {
             <div class="dash-card-sub">${m.winner ? '🏆 ' + esc(m.winner) + ' wins' : 'Result TBD'}${m.result_type ? ' (' + esc(m.result_type) + ')' : ''}</div>
           </div>
           <div style="display:flex;gap:6px;">
-            <button class="btn btn-sm" onclick="showMatchForm('${m.id}')">✏️</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteMatch('${m.id}')">🗑️</button>
+            <button class="btn btn-sm" onclick="event.stopPropagation();showMatchForm('${m.id}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteMatch('${m.id}')">🗑️</button>
             <span class="card-promo-badge">${esc(m.match_type)}</span>
           </div>
         </div>
@@ -445,9 +510,12 @@ async function renderMatches() {
           ${m.rating != null ? '<span>⭐ ' + m.rating.toFixed(1) + '</span>' : ''}
           ${m.won_rating != null ? '<span>📊 WON: ' + m.won_rating.toFixed(1) + '*</span>' : ''}
           ${m.title_match ? '<span>👑 ' + esc(m.title_name || 'Title Match') + '</span>' : ''}
-          ${m.notes ? '<span>📝 ' + esc(m.notes) + '</span>' : ''}
+          ${matchUrl ? '<span style="margin-left:auto;color:var(--accent);font-size:11px;">🔗 View Source ↗</span>' : ''}
         </div>
       </div>`;
+    return matchUrl
+      ? `<a href="${esc(matchUrl)}" target="_blank" rel="noopener" class="dash-card-link promo-${promoClass}">${cardContent}</a>`
+      : `<div class="promo-${promoClass}">${cardContent}</div>`;
   }).join('');
 }
 
@@ -908,4 +976,13 @@ function esc(s) {
   const d = document.createElement('div');
   d.textContent = String(s);
   return d.innerHTML;
+}
+
+// ── Source URL helpers ──
+function cagematchUrl(id) {
+  if (!id) return '';
+  // Construct Cagematch URL from a source_id (numeric ID or gimmick ID)
+  const clean = String(id).replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!clean) return '';
+  return 'https://www.cagematch.net/?id=1&nr=' + clean;
 }

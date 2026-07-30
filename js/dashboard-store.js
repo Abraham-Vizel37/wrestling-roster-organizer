@@ -26,7 +26,7 @@ const DashboardStore = {
       { name: 'TNA Impact — 2026-07-16', promotion: 'Total Nonstop Action Wrestling', date: '2026-07-16', event_type: 'TV', source: 'seed' },
       { name: 'WWE SmackDown — 2026-07-17', promotion: 'WWE', date: '2026-07-17', event_type: 'TV', source: 'seed' },
       { name: 'AEW Rampage — 2026-07-17', promotion: 'All Elite Wrestling', date: '2026-07-17', event_type: 'TV', source: 'seed' },
-      { name: 'WWE Saturday Night\'s Main Event', promotion: 'WWE', date: '2026-07-18', venue: 'Moda Center', location: 'Portland, OR', event_type: 'Special', source: 'seed' },
+      { name: 'WWE Saturday Night\'s Main Event', promotion: 'WWE', date: '2026-07-18', venue: 'Moda Center', location: 'Portland, OR', event_type: 'Special', source: 'seed', url: 'https://en.wikipedia.org/wiki/Saturday_Night%27s_Main_Event' },
       { name: 'AEW Collision — 2026-07-18', promotion: 'All Elite Wrestling', date: '2026-07-18', event_type: 'TV', source: 'seed' },
       { name: 'WWE Raw — 2026-07-20', promotion: 'WWE', date: '2026-07-20', event_type: 'TV', source: 'seed' },
       { name: 'WWE NXT — 2026-07-21', promotion: 'WWE', date: '2026-07-21', event_type: 'TV', source: 'seed' },
@@ -39,19 +39,39 @@ const DashboardStore = {
       { name: 'WWE NXT — 2026-07-28', promotion: 'WWE', date: '2026-07-28', event_type: 'TV', source: 'seed' },
       { name: 'AEW Dynamite — 2026-07-29', promotion: 'All Elite Wrestling', date: '2026-07-29', event_type: 'TV', source: 'seed' },
       // Upcoming
-      { name: 'SummerSlam', promotion: 'WWE', date: '2026-08-01', venue: 'U.S. Bank Stadium', location: 'Minneapolis, MN', event_type: 'PPV', source: 'seed' },
+      { name: 'SummerSlam', promotion: 'WWE', date: '2026-08-01', venue: 'U.S. Bank Stadium', location: 'Minneapolis, MN', event_type: 'PPV', source: 'seed', url: 'https://en.wikipedia.org/wiki/SummerSlam' },
       { name: 'AEW Dynamite — 2026-08-05', promotion: 'All Elite Wrestling', date: '2026-08-05', event_type: 'TV', source: 'seed' },
-      { name: 'NXT Heatwave', promotion: 'WWE', date: '2026-08-09', event_type: 'PPV', source: 'seed' },
+      { name: 'NXT Heatwave', promotion: 'WWE', date: '2026-08-09', event_type: 'PPV', source: 'seed', url: 'https://en.wikipedia.org/wiki/NXT_Heatwave' },
       { name: 'AEW Dynamite — 2026-08-12', promotion: 'All Elite Wrestling', date: '2026-08-12', event_type: 'TV', source: 'seed' },
-      { name: 'TNA Lockdown', promotion: 'Total Nonstop Action Wrestling', date: '2026-08-23', event_type: 'PPV', source: 'seed' },
-      { name: 'AEW All In', promotion: 'All Elite Wrestling', date: '2026-08-30', location: 'London, England', event_type: 'PPV', source: 'seed' },
-      { name: 'WWE Money in the Bank', promotion: 'WWE', date: '2026-09-07', event_type: 'PPV', source: 'seed' },
-      { name: 'TNA Bound for Glory', promotion: 'Total Nonstop Action Wrestling', date: '2026-10-11', event_type: 'PPV', source: 'seed' },
-      { name: 'WWE Crown Jewel', promotion: 'WWE', date: '2026-10-31', location: 'Riyadh, Saudi Arabia', event_type: 'PPV', source: 'seed' },
+      { name: 'TNA Lockdown', promotion: 'Total Nonstop Action Wrestling', date: '2026-08-23', event_type: 'PPV', source: 'seed', url: 'https://en.wikipedia.org/wiki/Lockdown_(professional_wrestling)' },
+      { name: 'AEW All In', promotion: 'All Elite Wrestling', date: '2026-08-30', location: 'London, England', event_type: 'PPV', source: 'seed', url: 'https://en.wikipedia.org/wiki/AEW_All_In' },
+      { name: 'WWE Money in the Bank', promotion: 'WWE', date: '2026-09-07', event_type: 'PPV', source: 'seed', url: 'https://en.wikipedia.org/wiki/WWE_Money_in_the_Bank' },
+      { name: 'TNA Bound for Glory', promotion: 'Total Nonstop Action Wrestling', date: '2026-10-11', event_type: 'PPV', source: 'seed', url: 'https://en.wikipedia.org/wiki/Bound_for_Glory' },
+      { name: 'WWE Crown Jewel', promotion: 'WWE', date: '2026-10-31', location: 'Riyadh, Saudi Arabia', event_type: 'PPV', source: 'seed', url: 'https://en.wikipedia.org/wiki/WWE_Crown_Jewel' },
     ];
   },
 
-  // ── DB Init ──
+    // ── Seed Matches: recent (past 2 weeks) + upcoming ──
+  get SEED_MATCHES() {
+    const today = new Date().toISOString().split('T')[0];
+    return [
+      // ≈ Jul 15–29 (recent)
+      { participants: ['Will Ospreay','Bryan Danielson'], promotion:'All Elite Wrestling', date:'2026-07-15', event_name:'AEW Dynamite — 2026-07-15', match_type:'Singles', winner:'Will Ospreay', result_type:'Pinfall', rating:9.2, won_rating:4.75, source:'seed' },
+      { participants: ['Swerve Strickland','Hangman Page'], promotion:'All Elite Wrestling', date:'2026-07-15', event_name:'AEW Dynamite — 2026-07-15', match_type:'Singles', winner:'Swerve Strickland', result_type:'Pinfall', rating:8.5, won_rating:4.25, source:'seed' },
+      { participants: ['Cody Rhodes','Solo Sikoa'], promotion:'WWE', date:'2026-07-18', event_name:"WWE Saturday Night's Main Event", match_type:'WWE Championship', winner:'Cody Rhodes', result_type:'Pinfall', rating:8.8, won_rating:4.5, title_match:true, title_name:'Undisputed WWE Championship', source:'seed' },
+      { participants: ['Rhea Ripley','Liv Morgan'], promotion:'WWE', date:'2026-07-18', event_name:"WWE Saturday Night's Main Event", match_type:'Women\'s World Championship', winner:'Rhea Ripley', result_type:'Submission', rating:8.2, won_rating:4.0, title_match:true, title_name:'Women\'s World Championship', source:'seed' },
+      { participants: ['MJF','Adam Copeland'], promotion:'All Elite Wrestling', date:'2026-07-22', event_name:'AEW Dynamite — 2026-07-22', match_type:'Singles', winner:'MJF', result_type:'Pinfall', rating:7.9, source:'seed' },
+      { participants: ['Mercedes Mone','Hikaru Shida'], promotion:'All Elite Wrestling', date:'2026-07-22', event_name:'AEW Dynamite — 2026-07-22', match_type:'AEW TBS Championship', winner:'Mercedes Mone', result_type:'Pinfall', title_match:true, title_name:'AEW TBS Championship', rating:7.5, source:'seed' },
+      { participants: ['Roman Reigns','Jacob Fatu'], promotion:'WWE', date:'2026-07-24', event_name:'WWE SmackDown — 2026-07-24', match_type:'Singles', winner:'Roman Reigns', result_type:'Pinfall', rating:8.1, source:'seed' },
+      { participants: ['Gunther','Ilja Dragunov'], promotion:'WWE', date:'2026-07-27', event_name:'WWE Raw — 2026-07-27', match_type:'World Heavyweight Championship', winner:'Gunther', result_type:'Submission', title_match:true, title_name:'World Heavyweight Championship', rating:8.7, won_rating:4.5, source:'seed' },
+      { participants: ['Kenny Omega','Kazuchika Okada'], promotion:'All Elite Wrestling', date:'2026-07-29', event_name:'AEW Dynamite — 2026-07-29', match_type:'Singles', winner:'Kenny Omega', result_type:'Pinfall', rating:9.0, won_rating:4.5, source:'seed' },
+      { participants: ['Jamie Hayter','Toni Storm'], promotion:'All Elite Wrestling', date:'2026-07-29', event_name:'AEW Dynamite — 2026-07-29', match_type:'AEW Women\'s World Championship', winner:'Jamie Hayter', result_type:'Pinfall', title_match:true, title_name:'AEW Women\'s World Championship', rating:7.8, source:'seed' },
+      // ≈ Upcoming (TBD match-ups — placeholder so the dashboard shows card is coming)
+      { participants: ['Cody Rhodes','Roman Reigns'], promotion:'WWE', date:'2026-08-01', event_name:'SummerSlam', match_type:'WWE Championship', winner:'', result_type:'', title_match:true, title_name:'Undisputed WWE Championship', source:'seed' },
+      { participants: ['Gunther','Ilja Dragunov'], promotion:'WWE', date:'2026-08-01', event_name:'SummerSlam', match_type:'World Heavyweight Championship', winner:'', result_type:'', title_match:true, title_name:'World Heavyweight Championship', source:'seed' },
+      { participants: ['Rhea Ripley','Jade Cargill'], promotion:'WWE', date:'2026-08-01', event_name:'SummerSlam', match_type:'Women\'s World Championship', winner:'', result_type:'', title_match:true, title_name:'Women\'s World Championship', source:'seed' },
+    ];
+  },
   async ready() {
     if (this.db) return;
     return new Promise((resolve, reject) => {
@@ -119,6 +139,7 @@ const DashboardStore = {
       event_type: (data.event_type || '').trim(),
       rating: data.rating != null ? parseFloat(data.rating) : null,
       image_url: data.image_url || '',
+      url: data.url || '',  // external link (Wikipedia, Cagematch, etc.)
       description: (data.description || '').trim(),
       match_ids: data.match_ids || [],
       created: Date.now()
@@ -182,7 +203,8 @@ const DashboardStore = {
       rating: data.rating != null ? parseFloat(data.rating) : null,
       won_rating: data.won_rating != null ? parseFloat(data.won_rating) : null,
       title_match: !!data.title_match, title_name: (data.title_name || '').trim(),
-      notes: (data.notes || '').trim(), created: Date.now()
+      notes: (data.notes || '').trim(), created: Date.now(),
+      url: data.url || ''
     };
     if (!match.participants.length) throw new Error('At least one participant is required');
     const store = this._openStore('matches', 'readwrite');
@@ -309,6 +331,18 @@ const DashboardStore = {
       await this._setMeta('lastAutoPopulation', Date.now());
       await this._setMeta('lastSource', 'seed');
       console.log('[DashboardStore] Auto-populated from seed:', imported, 'events');
+      // Also import seed matches
+      const existingMatches = await this.getAllMatches();
+      if (existingMatches.length === 0) {
+        let matchCount = 0;
+        for (const m of this.SEED_MATCHES) {
+          try {
+            await this.createMatch(m);
+            matchCount++;
+          } catch {}
+        }
+        console.log('[DashboardStore] Auto-populated seed matches:', matchCount);
+      }
       return { source: 'seed', count: imported };
     }
     return { source: 'existing', count: existing.length };
@@ -367,6 +401,7 @@ const DashboardStore = {
         await this.createEvent({
           source: 'wikipedia',
           source_id: 'wiki_recent_' + (json.parse.pageid || ev.page),
+          url: 'https://en.wikipedia.org/wiki/' + ev.page,
           name: `${ev.promo} ${pageTitle.replace(/^WWE\s*/i, '').replace(/^AEW\s*/i, '').replace(/Total\s*Nonstop\s*Action\s*Wrestling\s*/i, '')}`,
           promotion: ev.promo,
           date: ev.date,
@@ -431,6 +466,7 @@ const DashboardStore = {
         await this.createEvent({
           source: 'wikipedia',
           source_id: 'wiki_upcoming_' + json.parse.pageid,
+          url: 'https://en.wikipedia.org/wiki/' + ev.search.replace(/_/g, '_'),
           name: `${ev.promo} ${eventName}`,
           promotion: ev.promo,
           date,

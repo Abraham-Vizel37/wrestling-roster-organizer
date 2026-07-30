@@ -272,6 +272,13 @@ body::before {
   background: var(--bg-glass-hover); transform: translateY(-3px);
   box-shadow: var(--shadow-glow);
 }
+.dash-card-link {
+  display: block; text-decoration: none; color: inherit;
+  transition: transform 0.25s, box-shadow 0.25s; border-radius: var(--radius-lg);
+}
+.dash-card-link:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+.dash-card-link:hover .dash-card { border-color: var(--accent); background: rgba(255,255,255,0.08); }
+.carousel-slide[cursor="pointer"] { cursor: pointer; }
 
 .dash-card-header {
   display: flex; justify-content: space-between; align-items: flex-start;
