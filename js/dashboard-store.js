@@ -557,5 +557,27 @@ const DashboardStore = {
     const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
     if (!res.ok) throw new Error(`Cagematch API error: ${res.status}`);
     return res.json();
+  },
+
+  // ── Cagematch Event Search & Details (for event detail modal) ──
+  async searchCagematchEvent(eventName, apiKey) {
+    const data = await this.importFromCagematch(apiKey, 'search_events', { query: eventName, offset: 0 });
+    return data?.data?.results || [];
+  },
+
+  async getCagematchEventDetails(eventId, apiKey) {
+    const data = await this.importFromCagematch(apiKey, 'get_event_details', { id: eventId });
+    return data?.data || null;
+  },
+
+  getCagematchApiKey() {
+    try {
+      const raw = localStorage.getItem('dashSettings');
+      if (raw) {
+        const s = JSON.parse(raw);
+        return s.cagematchKey || '';
+      }
+    } catch {}
+    return '';
   }
 };

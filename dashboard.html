@@ -211,6 +211,16 @@
   </div>
 </div>
 
+<!-- ── Event Detail Modal ── -->
+<div class="detail-overlay" id="detailOverlay" onclick="if(event.target===this)closeEventDetail()">
+  <div class="detail-modal" id="detailModal">
+    <button class="detail-close" onclick="closeEventDetail()">&times;</button>
+    <div id="detailContent">
+      <div class="loading-spinner" style="padding:60px;"><div class="spinner"></div><p style="margin-top:16px;color:var(--text-muted);">Loading event details...</p></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Toast Container ── -->
 <div class="toast-container" id="toastContainer"></div>
 

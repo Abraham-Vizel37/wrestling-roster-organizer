@@ -288,7 +288,12 @@ function renderEventCards(container, events, prefix) {
         </div>
       </div>`;
     return sourceUrl
-      ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener" class="dash-card-link promo-${promoClass}">${cardContent}</a>`
+      ? `<div class="dash-card-link-wrap promo-${promoClass}" onclick="openEventDetail('${e.id}')" style="cursor:pointer;">${cardContent}
+            <div style="margin-top:8px;padding-top:10px;border-top:1px solid var(--border-glass);display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:12px;color:var(--text-muted);">Click for full details →</span>
+              <a href="${esc(sourceUrl)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="event.stopPropagation();">🔗 View Source ↗</a>
+            </div>
+          </div>`
       : `<div class="promo-${promoClass}">${cardContent}</div>`;
   }).join('');
 }
@@ -323,8 +328,13 @@ function renderMiniMatchCards(container, matches, events) {
           ${matchUrl ? '<span style="margin-left:auto;font-size:11px;color:var(--accent);">🔗</span>' : ''}
         </div>
       </div>`;
-    return matchUrl
-      ? `<a href="${esc(matchUrl)}" target="_blank" rel="noopener" class="dash-card-link promo-${promoClass}">${card}</a>`
+    const clickAction = m.event_id
+      ? `openEventDetail('${m.event_id}')`
+      : (matchUrl ? `window.open('${esc(matchUrl)}','_blank')` : '');
+    const cursorStyle = clickAction ? 'pointer' : 'default';
+    const clickHandler = clickAction ? ` onclick="${clickAction}"` : '';
+    return clickAction
+      ? `<div class="dash-card-link-wrap promo-${promoClass}"${clickHandler} style="cursor:${cursorStyle};">${card}</div>`
       : `<div class="promo-${promoClass}">${card}</div>`;
   }).join('');
 }
@@ -428,7 +438,12 @@ async function renderEvents() {
         </div>
       </div>`;
     return sourceUrl
-      ? `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener" class="dash-card-link promo-${promoClass}">${cardContent}</a>`
+      ? `<div class="dash-card-link-wrap promo-${promoClass}" onclick="openEventDetail('${e.id}')" style="cursor:pointer;">${cardContent}
+            <div style="margin-top:8px;padding-top:10px;border-top:1px solid var(--border-glass);display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:12px;color:var(--text-muted);">Click for full details →</span>
+              <a href="${esc(sourceUrl)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px;" onclick="event.stopPropagation();">🔗 View Source ↗</a>
+            </div>
+          </div>`
       : `<div class="promo-${promoClass}">${cardContent}</div>`;
   }).join('');
 }
@@ -513,8 +528,13 @@ async function renderMatches() {
           ${matchUrl ? '<span style="margin-left:auto;color:var(--accent);font-size:11px;">🔗 View Source ↗</span>' : ''}
         </div>
       </div>`;
-    return matchUrl
-      ? `<a href="${esc(matchUrl)}" target="_blank" rel="noopener" class="dash-card-link promo-${promoClass}">${cardContent}</a>`
+    const clickAction = m.event_id
+      ? `openEventDetail('${m.event_id}')`
+      : (matchUrl ? `window.open('${esc(matchUrl)}','_blank')` : '');
+    const cursorStyle = clickAction ? 'pointer' : 'default';
+    const clickHandler = clickAction ? ` onclick="${clickAction}"` : '';
+    return clickAction
+      ? `<div class="dash-card-link-wrap promo-${promoClass}"${clickHandler} style="cursor:${cursorStyle};">${cardContent}</div>`
       : `<div class="promo-${promoClass}">${cardContent}</div>`;
   }).join('');
 }
@@ -798,6 +818,203 @@ async function deleteMatch(id) {
 // ══════════════════════════════════════════════
 function closeDashboardForm() {
   document.getElementById('modalOverlay').classList.remove('show');
+}
+
+// ══════════════════════════════════════════════
+// EVENT DETAIL MODAL
+// ══════════════════════════════════════════════
+function closeEventDetail() {
+  document.getElementById('detailOverlay').classList.remove('show');
+}
+
+async function openEventDetail(eventId) {
+  const overlay = document.getElementById('detailOverlay');
+  const content = document.getElementById('detailContent');
+  content.innerHTML = `<div class="loading-spinner" style="padding:60px;"><div class="spinner"></div><p style="margin-top:16px;color:var(--text-muted);">Loading event details...</p></div>`;
+  overlay.classList.add('show');
+
+  // Fetch event + matches from local DB
+  const event = await DashboardStore.getEvent(eventId);
+  const matches = await DashboardStore.getMatchesForEvent(eventId);
+  let cagematchResults = [];
+
+  // Try Cagematch API if key available
+  const apiKey = DashboardStore.getCagematchApiKey();
+  if (apiKey && event) {
+    try {
+      const searchResults = await DashboardStore.searchCagematchEvent(event.name, apiKey);
+      const match = searchResults.find(r => {
+        const name = (r['Event Name'] || '').toLowerCase();
+        const eventName = event.name.toLowerCase();
+        return name.includes(eventName) || eventName.includes(name);
+      });
+      if (match) {
+        const eventId = match['Event Name_id'] || match['col_2_id'];
+        if (eventId) {
+          const details = await DashboardStore.getCagematchEventDetails(eventId, apiKey);
+          if (details && details.results && Array.isArray(details.results)) {
+            cagematchResults = details.results;
+            // Merge Cagematch data into event display object
+            if (details['Name of the event']) event.cagematch_name = details['Name of the event'];
+            if (details.Promotion) event.cagematch_promotion = details.Promotion;
+            if (details.Type) event.cagematch_type = details.Type;
+            if (details.Location) event.cagematch_location = details.Location;
+            if (details.Arena) event.cagematch_arena = details.Arena;
+            if (details.Attendance != null) event.cagematch_attendance = details.Attendance;
+            event.cagematch_id = eventId;
+            event.cagematch_rating = match['Rating'];
+            event.cagematch_votes = match['Votes'];
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Cagematch fetch failed:', e);
+    }
+  }
+
+  renderEventDetail(content, event, matches, cagematchResults, apiKey);
+}
+
+function renderEventDetail(container, event, matches, cagematchResults, apiKey) {
+  if (!event) {
+    container.innerHTML = '<div class="empty-state" style="padding:60px;"><div class="icon">⚠️</div><h3>Event not found</h3></div>';
+    return;
+  }
+
+  const esc = (s) => {
+    if (s == null) return '';
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  };
+
+  const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna','New Japan Pro-Wrestling':'njpw','Ring of Honor':'roh' };
+  const promoClass = promoMap[event.promotion] || '';
+  const sourceUrl = event.url || '';
+  const cagematchUrl = event.cagematch_id ? `https://www.cagematch.net/?id=1&nr=${event.cagematch_id}` : '';
+
+  // ── Parse Cagematch match results ──
+  let commentCount = 0;
+  let ratingCount = 0;
+  const parsedMatches = cagematchResults.map(s => {
+    if (!s || typeof s !== 'string') return null;
+    const trimmed = s.trim();
+    if (trimmed.startsWith('Number of comments:')) {
+      commentCount = parseInt(trimmed.replace('Number of comments:', '')) || 0;
+      return null;
+    }
+    if (trimmed.startsWith('Current Total Rating')) { ratingCount++; return null; }
+    if (trimmed.startsWith('Valid votes:')) return null;
+    if (trimmed.startsWith('All workers')) { return null; }
+    if (trimmed.startsWith('---')) return null;
+    if (trimmed.startsWith('Not eligible')) return null;
+    if (trimmed.startsWith('::::')) return null;
+    if (/^[A-Za-z]/.test(trimmed) && !trimmed.includes(' defeats ') && !trimmed.includes(' defeats ')) return null;
+    return trimmed;
+  }).filter(Boolean);
+
+  // ── Build HTML ──
+  let html = '';
+
+  // HEADER
+  html += `
+    <div class="detail-hero promo-${promoClass}">
+      <div class="detail-hero-bg"></div>
+      <div class="detail-hero-content">
+        <div class="detail-promo-badge">${esc(event.promotion || 'Indie')}</div>
+        <h1 class="detail-title">${esc(event.name)}</h1>
+        <div class="detail-date-badge">
+          <span>📅</span>
+          <span>${formatDate(event.date)}</span>
+        </div>
+      </div>
+    </div>`;
+
+  // INFO GRID
+  html += `<div class="detail-info-grid">`;
+  html += `<div class="detail-info-card"><div class="label">Type</div><div class="value">${esc(event.event_type || 'Event')}</div></div>`;
+  html += `<div class="detail-info-card"><div class="label">Promotion</div><div class="value">${esc(event.promotion || 'N/A')}</div></div>`;
+  if (event.venue || event.cagematch_arena) {
+    html += `<div class="detail-info-card"><div class="label">Venue</div><div class="value">${esc(event.cagematch_arena || event.venue || 'N/A')}</div></div>`;
+  }
+  if (event.location || event.cagematch_location) {
+    html += `<div class="detail-info-card"><div class="label">Location</div><div class="value">${esc(event.cagematch_location || event.location || 'N/A')}</div></div>`;
+  }
+  if (event.cagematch_attendance != null) {
+    html += `<div class="detail-info-card"><div class="label">Attendance</div><div class="value">👥 ${Number(event.cagematch_attendance).toLocaleString()}</div></div>`;
+  }
+  if (event.cagematch_rating) {
+    html += `<div class="detail-info-card"><div class="label">Cagematch Rating</div><div class="value">⭐ ${esc(event.cagematch_rating)}${event.cagematch_votes ? ' (' + esc(event.cagematch_votes) + ' votes)' : ''}</div></div>`;
+  }
+  if (event.rating != null) {
+    html += `<div class="detail-info-card"><div class="label">User Rating</div><div class="value">⭐ ${Number(event.rating).toFixed(1)}</div></div>`;
+  }
+  html += `</div>`;
+
+  // SOURCE LINKS
+  const hasLinks = sourceUrl || cagematchUrl;
+  if (hasLinks) {
+    html += `<div class="detail-links">`;
+    if (sourceUrl) {
+      html += `<a href="${esc(sourceUrl)}" target="_blank" rel="noopener" class="detail-link-btn wiki-btn">📖 Wikipedia</a>`;
+    }
+    if (cagematchUrl) {
+      html += `<a href="${cagematchUrl}" target="_blank" rel="noopener" class="detail-link-btn cage-btn">🔗 Cagematch.net</a>`;
+    }
+    html += `</div>`;
+  }
+
+  // MATCH CARD SECTION
+  const isComplete = parsedMatches.length > 0;
+  const displayMatches = isComplete ? parsedMatches : matches;
+
+  html += `<h2 class="detail-section-title">${isComplete ? '📋 Match Card' : '🤼 Matches'} <span class="detail-count-badge">${displayMatches.length}</span></h2>`;
+
+  if (displayMatches.length === 0) {
+    html += `<div class="empty-state" style="padding:30px;"><p style="color:var(--text-muted);">No match data available yet. Add matches for this event to get started.</p></div>`;
+  } else if (isComplete) {
+    // Rich Cagematch-style match list
+    html += `<div class="detail-cagematch-card">`;
+    displayMatches.forEach(m => {
+      const isTitleMatch = m.includes('Title') || m.includes('TITLE');
+      const isTitleChange = m.includes('TITLE CHANGE');
+      const isDQ = m.includes('DQ');
+      const parts = m.split(' defeats ');
+      const winner = parts[0]?.trim() || '';
+      const rest = parts[1]?.trim() || m;
+
+      html += `<div class="detail-match-row ${isTitleChange ? 'title-change' : ''}">`;
+      html += `<div class="detail-match-winner">🏆 ${esc(winner)}</div>`;
+      html += `<div class="detail-match-result">defeats ${esc(rest)}</div>`;
+      if (isTitleChange) html += `<div class="detail-match-badge change-badge">⚡ TITLE CHANGE</div>`;
+      else if (isDQ) html += `<div class="detail-match-badge dq-badge">🚫 DQ</div>`;
+      else if (isTitleMatch) html += `<div class="detail-match-badge title-badge">👑 Title Match</div>`;
+      html += `</div>`;
+    });
+    html += `</div>`;
+  } else {
+    // Local DB matches
+    html += `<div class="detail-matches-grid">`;
+    displayMatches.forEach(m => {
+      const participants = m.participants?.join(' vs ') || 'TBD vs TBD';
+      html += `<div class="detail-match-card">`;
+      html += `<div class="match-participants">🤼 ${esc(participants)}</div>`;
+      if (m.winner) html += `<div class="match-result">🏆 ${esc(m.winner)} wins</div>`;
+      if (m.match_type || m.stipulation) html += `<div class="match-type">${esc(m.match_type || m.stipulation || '')}</div>`;
+      if (m.title_match) html += `<div class="detail-match-badge title-badge">👑 ${esc(m.title_name || 'Title Match')}</div>`;
+      html += `</div>`;
+    });
+    html += `</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return 'TBD';
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 // ══════════════════════════════════════════════
