@@ -534,6 +534,120 @@ const DashboardStore = {
     return { format: 'wrestling-dashboard-matches-v1', exported: new Date().toISOString(), matches };
   },
 
+  // ── CSV Export ──
+  _csvEncode(v) {
+    if (v === null || v === undefined) return '';
+    const s = String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  },
+  _csvRow(keys) {
+    const self = this;
+    return function(obj) { return keys.map(k => self._csvEncode(obj[k] || '')).join(','); };
+  },
+  async exportAllCSV() {
+    const evCols = ['name','date','promotion','location','arena','attendance','event_type','url','notes'];
+    const mCols = ['event_name','date','promotion','match_type','stipulation','participants','winner','result_type','rating','won_rating','title_match','title_name','notes','url'];
+    const evRow = this._csvRow(evCols);
+    const mRow = this._csvRow(mCols);
+    const events = await this.getAllEvents();
+    const matches = await this.getAllMatches();
+    return {
+      eventsCsv: evCols.map(this._csvEncode).join(',') + '\n' + events.map(evRow).join('\n'),
+      matchesCsv: mCols.map(this._csvEncode).join(',') + '\n' + matches.map(mRow).join('\n')
+    };
+  },
+  async exportEventsCSV() {
+    const cols = ['name','date','promotion','location','arena','attendance','event_type','url','notes'];
+    const row = this._csvRow(cols);
+    const events = await this.getAllEvents();
+    return cols.map(this._csvEncode).join(',') + '\n' + events.map(row).join('\n');
+  },
+  async exportMatchesCSV() {
+    const cols = ['event_name','date','promotion','match_type','stipulation','participants','winner','result_type','rating','won_rating','title_match','title_name','notes','url'];
+    const row = this._csvRow(cols);
+    const matches = await this.getAllMatches();
+    return cols.map(this._csvEncode).join(',') + '\n' + matches.map(row).join('\n');
+  },
+
+  // ── CSV Import ──
+  _csvParseLine(line) {
+    const vals = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inQ) {
+        if (c === '"') {
+          if (line[i+1] === '"') { cur += '"'; i++; }
+          else { inQ = false; }
+        } else { cur += c; }
+      } else {
+        if (c === '"') { inQ = true; }
+        else if (c === ',') { vals.push(cur.trim()); cur = ''; }
+        else { cur += c; }
+      }
+    }
+    vals.push(cur.trim());
+    return vals;
+  },
+  _csvParse(text) {
+    const lines = text.trim().split('\n');
+    if (!lines.length) return [];
+    const headers = this._csvParseLine(lines[0]);
+    return lines.slice(1).map(l => {
+      const vals = this._csvParseLine(l);
+      const obj = {};
+      headers.forEach((h,i) => { obj[h.trim()] = vals[i] || ''; });
+      return obj;
+    });
+  },
+  async importFromCSV(csvText) {
+    const rows = this._csvParse(csvText);
+    if (!rows.length) return { events:0, matches:0, skipped:0 };
+
+    // Detect type: events have 'location', matches have 'match_type'
+    const isEvents = rows[0].hasOwnProperty('location');
+    const isMatches = rows[0].hasOwnProperty('match_type');
+
+    if (isEvents) {
+      const events = rows.map(r => ({
+        name: r.name || 'Unknown Event',
+        date: r.date || '',
+        promotion: r.promotion || '',
+        location: r.location || '',
+        arena: r.arena || '',
+        attendance: r.attendance || '',
+        event_type: r.event_type || r.type || '',
+        url: r.url || '',
+        notes: r.notes || '',
+        source: 'csv'
+      }));
+      const result = await this.importMany(events, []);
+      return { events: result.events, matches: 0, skipped: result.skipped || 0 };
+    } else if (isMatches) {
+      const matches = rows.map(r => ({
+        event_name: r.event_name || '',
+        date: r.date || '',
+        promotion: r.promotion || '',
+        match_type: r.match_type || 'Singles',
+        stipulation: r.stipulation || '',
+        participants: (r.participants || '').split(/\s*[\/,vs.]\s*/).filter(Boolean),
+        winner: r.winner || '',
+        result_type: r.result_type || '',
+        rating: r.rating ? parseFloat(r.rating) : null,
+        won_rating: r.won_rating ? parseFloat(r.won_rating) : null,
+        title_match: r.title_match === 'true' || r.title_match === 'TRUE' || r.title_match === '1',
+        title_name: r.title_name || '',
+        notes: r.notes || '',
+        url: r.url || '',
+        source: 'csv'
+      }));
+      const result = await this.importMany([], matches);
+      return { events: 0, matches: result.matches, skipped: result.skipped || 0 };
+    }
+    throw new Error('Cannot detect CSV format — use Events or Matches export as template');
+  },
+
   async importFromFile(json) {
     if (json.format === 'wrestling-dashboard-v1' || json.events || json.matches) return this.importMany(json.events||[], json.matches||[]);
     if (json.format === 'wrestling-dashboard-events-v1') return this.importMany(json.events||[], []);

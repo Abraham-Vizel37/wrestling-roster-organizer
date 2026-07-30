@@ -125,7 +125,7 @@
   <section class="dash-content" id="section-import">
     <div class="section-title">📥 Import Data</div>
     <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">
-      Import events by name from Cagematch.net (via cors.sh proxy + DOMParser — zero API keys needed). Or upload a JSON file.
+      Import events by name from Cagematch.net (via cors.sh proxy + DOMParser — zero API keys needed). Or upload a JSON or CSV file.
     </p>
     <div class="card-grid" style="grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));">
       <div class="dash-card">
@@ -140,8 +140,8 @@
       </div>
       <div class="dash-card">
         <div class="dash-card-header"><div class="dash-card-title">📁 Import from File</div></div>
-        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px;">Upload a JSON file in the universal wrestling format.</p>
-        <input type="file" id="fileImport" accept=".json" onchange="importFromFile(event)" style="margin-bottom:10px;">
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px;">Upload a JSON or CSV file. CSV files open directly in Excel/Sheets. Export from this dashboard to get the right format.</p>
+        <input type="file" id="fileImport" accept=".json,.csv" onchange="importFromFile(event)" style="margin-bottom:10px;">
         <div id="fileImportResults" class="import-results"></div>
       </div>
     </div>
@@ -151,17 +151,28 @@
   <section class="dash-content" id="section-export">
     <div class="section-title">📤 Export Data</div>
     <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">
-      Export match and event data in the universal JSON format.
+      Export in JSON (full data) or CSV (spreadsheet-compatible). Rows open directly in Excel, Google Sheets, or LibreOffice.
     </p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
       <button class="btn btn-primary" onclick="exportAll()">📦 Export All</button>
       <button class="btn" onclick="exportEvents()">📅 Events Only</button>
       <button class="btn" onclick="exportMatches()">🤼 Matches Only</button>
     </div>
     <div id="exportPreview" style="display:none;" class="dash-card">
       <div class="dash-card-header"><div class="dash-card-title">Preview <span style="font-weight:400;color:var(--text-muted);font-size:12px;margin-left:8px;">(copy or download)</span></div></div>
-      <pre id="exportJson" style="background:var(--bg-primary);padding:16px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6;margin:12px 0;"></pre>
-      <button class="btn btn-primary" onclick="downloadExport()">⬇️ Download JSON</button>
+      <!-- CSV Preview -->
+      <div id="exportCsv"></div>
+      <!-- Download buttons -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">
+        <button class="btn btn-primary btn-sm" onclick="downloadExportCSV('events')">📥 Download Events CSV</button>
+        <button class="btn btn-primary btn-sm" onclick="downloadExportCSV('matches')">📥 Download Matches CSV</button>
+        <button class="btn btn-sm" onclick="downloadExportJSON()">⬇️ Download JSON</button>
+      </div>
+      <!-- Raw JSON preview (collapsed) -->
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer;color:var(--text-muted);font-size:13px;">📄 Raw JSON</summary>
+        <pre id="exportJson" style="background:var(--bg-primary);padding:16px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6;margin:8px 0;max-height:300px;overflow-y:auto;"></pre>
+      </details>
     </div>
   </section>
 

@@ -1018,19 +1018,60 @@ async function clearAllData() {
 // ══════════════════════════════════════════════
 // EXPORT
 // ══════════════════════════════════════════════
-async function exportAll() { showExport(await DashboardStore.exportAll()); }
-async function exportEvents() { showExport(await DashboardStore.exportEvents()); }
-async function exportMatches() { showExport(await DashboardStore.exportMatches()); }
+let _lastExportJson = null;
+let _lastExportCsv = null;
 
-function showExport(data) {
+async function exportAll() {
+  const [json, csv] = await Promise.all([DashboardStore.exportAll(), DashboardStore.exportAllCSV()]);
+  showExport(json, csv.eventsCsv, csv.matchesCsv, 'Events + Matches');
+}
+async function exportEvents() {
+  const [json, csv] = await Promise.all([DashboardStore.exportEvents(), DashboardStore.exportEventsCSV()]);
+  showExport(json, csv, null, 'Events');
+}
+async function exportMatches() {
+  const [json, csv] = await Promise.all([DashboardStore.exportMatches(), DashboardStore.exportMatchesCSV()]);
+  showExport(json, null, csv, 'Matches');
+}
+
+function showExport(jsonData, eventsCsv, matchesCsv, label) {
+  _lastExportJson = jsonData;
+  _lastExportCsv = { events: eventsCsv, matches: matchesCsv };
   const preview = document.getElementById('exportPreview');
   preview.style.display = 'block';
-  document.getElementById('exportJson').textContent = JSON.stringify(data, null, 2);
+  document.getElementById('exportJson').textContent = JSON.stringify(jsonData, null, 2);
+
+  // Render CSV previews
+  let csvHtml = '';
+  if (eventsCsv) {
+    const rows = eventsCsv.split('\n').slice(0, 6);
+    csvHtml += `<div style="margin-top:12px;"><strong>📅 Events CSV</strong> <span style="color:var(--text-muted);font-size:12px;font-weight:400;">(${(eventsCsv.split('\n').length-1)} rows)</span></div>
+<pre style="background:var(--bg-primary);padding:12px;border-radius:6px;overflow-x:auto;font-size:11px;line-height:1.5;margin:6px 0;max-height:180px;overflow-y:auto;">${esc(rows.join('\n'))}</pre>`;
+  }
+  if (matchesCsv) {
+    const rows = matchesCsv.split('\n').slice(0, 6);
+    csvHtml += `<div style="margin-top:8px;"><strong>🤼 Matches CSV</strong> <span style="color:var(--text-muted);font-size:12px;font-weight:400;">(${(matchesCsv.split('\n').length-1)} rows)</span></div>
+<pre style="background:var(--bg-primary);padding:12px;border-radius:6px;overflow-x:auto;font-size:11px;line-height:1.5;margin:6px 0;max-height:180px;overflow-y:auto;">${esc(rows.join('\n'))}</pre>`;
+  }
+  const csvContainer = document.getElementById('exportCsv');
+  if (csvContainer) csvContainer.innerHTML = csvHtml;
+
   preview.scrollIntoView({ behavior: 'smooth' });
 }
 
-function downloadExport() {
-  const json = document.getElementById('exportJson').textContent;
+function downloadExportCSV(type) {
+  const csv = type === 'events' ? _lastExportCsv?.events : type === 'matches' ? _lastExportCsv?.matches : null;
+  if (!csv) { showToast('⚠️ Export something first', 'error'); return; }
+  const filename = `wrestling-${type}-${new Date().toISOString().split('T')[0]}.csv`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadExportJSON() {
+  if (!_lastExportJson) { showToast('⚠️ Export something first', 'error'); return; }
+  const json = JSON.stringify(_lastExportJson, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1049,9 +1090,16 @@ async function importFromFile(event) {
   const container = document.getElementById('fileImportResults');
   try {
     const text = await file.text();
-    const json = JSON.parse(text);
-    const result = await DashboardStore.importFromFile(json);
-    container.innerHTML = `<div class="toast success" style="padding:10px;">✅ Imported: ${result.events} events, ${result.matches} matches${result.skipped > 0 ? ' (' + result.skipped + ' dups skipped)' : ''}</div>`;
+
+    // Detect CSV by extension or content
+    if (file.name.endsWith('.csv') || text.includes(',') && text.split('\n')[0].includes(',')) {
+      const result = await DashboardStore.importFromCSV(text);
+      container.innerHTML = `<div class="toast success" style="padding:10px;">✅ CSV imported: ${result.events} events, ${result.matches} matches${result.skipped > 0 ? ' (' + result.skipped + ' dups skipped)' : ''}</div>`;
+    } else {
+      const json = JSON.parse(text);
+      const result = await DashboardStore.importFromFile(json);
+      container.innerHTML = `<div class="toast success" style="padding:10px;">✅ JSON imported: ${result.events} events, ${result.matches} matches${result.skipped > 0 ? ' (' + result.skipped + ' dups skipped)' : ''}</div>`;
+    }
     renderEvents();
     renderMatches();
     loadOverview();
