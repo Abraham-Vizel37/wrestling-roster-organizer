@@ -550,34 +550,53 @@ const DashboardStore = {
     }
   },
 
-  // ── Cagematch Import ──
-  async importFromCagematch(apiKey, endpoint, params) {
-    const baseUrl = 'https://api.parse.bot/scraper/55c28715-08ab-4cda-9439-735e8c8c302e';
-    const url = `${baseUrl}/${endpoint}?${new URLSearchParams(params)}`;
-    const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
-    if (!res.ok) throw new Error(`Cagematch API error: ${res.status}`);
-    return res.json();
-  },
-
-  // ── Cagematch Event Search & Details (for event detail modal) ──
-  async searchCagematchEvent(eventName, apiKey) {
-    const data = await this.importFromCagematch(apiKey, 'search_events', { query: eventName, offset: 0 });
-    return data?.data?.results || [];
-  },
-
-  async getCagematchEventDetails(eventId, apiKey) {
-    const data = await this.importFromCagematch(apiKey, 'get_event_details', { id: eventId });
-    return data?.data || null;
-  },
-
-  getCagematchApiKey() {
+  // ── Native Cagematch Scraper (replaces Parse.bot) ──
+  /**
+   * Search Cagematch for an event by name.
+   * Returns [{id, name, promotion, date, url}] sorted by relevance.
+   * Zero API keys required — uses cors.sh proxy + DOMParser.
+   */
+  async searchCagematchEvent(eventName) {
     try {
-      const raw = localStorage.getItem('dashSettings');
-      if (raw) {
-        const s = JSON.parse(raw);
-        return s.cagematchKey || '';
-      }
-    } catch {}
-    return '';
+      return await NativeScraper.searchEvent(eventName);
+    } catch (e) {
+      console.warn('Native search failed:', e);
+      return [];
+    }
+  },
+
+  /**
+   * Get full event details from Cagematch by event ID.
+   * Returns {id, eventName, date, promotion, location, arena, attendance,
+   *          eventType, eventRating, eventVotes, matches[], matchCount, scrapedAt}
+   * Cached in IndexedDB with 24h TTL + 48h stale-while-revalidate.
+   */
+  async getCagematchEventDetails(eventId) {
+    try {
+      return await NativeScraper.getEvent(eventId);
+    } catch (e) {
+      console.warn('Native detail fetch failed:', e);
+      return null;
+    }
+  },
+
+  /**
+   * One-step scrape: find event by name and fetch full details.
+   * Priority: known ID mapping → Cagematch search → Wikipedia fallback
+   */
+  async scrapeCagematchEvent(eventName) {
+    try {
+      return await NativeScraper.scrapeEvent(eventName);
+    } catch (e) {
+      console.warn('Native scrape failed:', e);
+      return null;
+    }
+  },
+
+  /**
+   * Register known Cagematch IDs for seeded events to skip search step.
+   */
+  addKnownCagematchEvent(name, cagematchId) {
+    NativeScraper.addKnownEvent(name, cagematchId);
   }
 };

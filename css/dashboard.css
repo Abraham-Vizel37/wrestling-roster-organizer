@@ -682,3 +682,36 @@ body::before {
   .detail-matches-grid { padding: 0 20px 24px; }
   .detail-modal { border-radius: 14px; }
 }
+
+/* ── Detail Match Header Row (type · rating · duration) ── */
+.detail-match-header {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.detail-match-type {
+  font-size: 11px; font-weight: 600;
+  color: rgba(255,255,255,0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.detail-match-rating {
+  font-size: 12px;
+  color: #f59e0b;
+}
+.detail-match-duration {
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  margin-left: auto;
+}
+.detail-match-draw {
+  font-size: 14px;
+  color: #93c5fd;
+  font-weight: 500;
+}
+.detail-match-won {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  margin-top: 4px;
+  font-style: italic;
+}

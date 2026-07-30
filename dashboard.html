@@ -125,19 +125,15 @@
   <section class="dash-content" id="section-import">
     <div class="section-title">📥 Import Data</div>
     <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">
-      Import from multiple sources. All data is normalised into a consistent format.
+      Import events by name from Cagematch.net (via cors.sh proxy + DOMParser — zero API keys needed). Or upload a JSON file.
     </p>
     <div class="card-grid" style="grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));">
       <div class="dash-card">
-        <div class="dash-card-header"><div class="dash-card-title">🏟️ Cagematch (Parse.bot)</div></div>
-        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px;">Largest wrestling database. Requires a free Parse.bot API key.</p>
+        <div class="dash-card-header"><div class="dash-card-title">🏟️ Cagematch.net</div></div>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px;">Search Cagematch for an event by name. Uses free cors.sh proxy — no API key required.</p>
         <div class="form-group">
-          <label>API Key</label>
-          <input type="text" class="form-input" id="cagematchApiKey" placeholder="Enter Parse.bot API key">
-        </div>
-        <div class="form-group">
-          <label>Search wrestler or event</label>
-          <input type="text" class="form-input" id="cagematchQuery" placeholder="e.g. Kenny Omega, WrestleMania">
+          <label>Event name to import</label>
+          <input type="text" class="form-input" id="cagematchQuery" placeholder="e.g. SummerSlam 2026, WrestleMania XL">
         </div>
         <button class="btn btn-primary" onclick="importCagematch()">🔍 Search & Import</button>
         <div id="cagematchResults" class="import-results" style="margin-top:10px;"></div>
@@ -173,17 +169,6 @@
   <section class="dash-content" id="section-settings">
     <div class="section-title">⚙️ Settings</div>
     <div class="card-grid" style="grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));">
-      <div class="dash-card">
-        <div class="settings-group">
-          <h3>🌐 Data Sources</h3>
-          <p>Parse.bot API key for Cagematch imports (stored locally, never sent elsewhere).</p>
-          <div class="form-group">
-            <label>Cagematch API Key</label>
-            <input type="password" class="form-input" id="settingsApiKey" placeholder="Enter Parse.bot API key">
-          </div>
-          <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
-        </div>
-      </div>
       <div class="dash-card">
         <div class="settings-group">
           <h3>💾 Data Management</h3>
@@ -224,8 +209,9 @@
 <!-- ── Toast Container ── -->
 <div class="toast-container" id="toastContainer"></div>
 
-<script src="js/store.js?v=5"></script>
-<script src="js/dashboard-store.js?v=5"></script>
-<script src="js/dashboard-app.js?v=5"></script>
+<script src="js/store.js?v=6"></script>
+<script src="js/dashboard-store.js?v=6"></script>
+<script src="js/native-scraper.js?v=1"></script>
+<script src="js/dashboard-app.js?v=6"></script>
 </body>
 </html>

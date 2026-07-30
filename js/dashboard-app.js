@@ -49,8 +49,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load saved settings
     const saved = localStorage.getItem('dashboardSettings');
     if (saved) { try { dash.state.settings = JSON.parse(saved); } catch {} }
-    const keyField = document.getElementById('settingsApiKey');
-    if (keyField && dash.state.settings.cagematchKey) keyField.value = dash.state.settings.cagematchKey;
 
     // Auto-populate
     const cacheBadge = document.getElementById('cacheStatus');
@@ -836,46 +834,35 @@ async function openEventDetail(eventId) {
   // Fetch event + matches from local DB
   const event = await DashboardStore.getEvent(eventId);
   const matches = await DashboardStore.getMatchesForEvent(eventId);
-  let cagematchResults = [];
+  let cagematchData = null;
 
-  // Try Cagematch API if key available
-  const apiKey = DashboardStore.getCagematchApiKey();
-  if (apiKey && event) {
+  // Try native Cagematch scraper (zero API keys, cors.sh proxy + DOMParser)
+  if (event) {
     try {
-      const searchResults = await DashboardStore.searchCagematchEvent(event.name, apiKey);
-      const match = searchResults.find(r => {
-        const name = (r['Event Name'] || '').toLowerCase();
-        const eventName = event.name.toLowerCase();
-        return name.includes(eventName) || eventName.includes(name);
-      });
-      if (match) {
-        const eventId = match['Event Name_id'] || match['col_2_id'];
-        if (eventId) {
-          const details = await DashboardStore.getCagematchEventDetails(eventId, apiKey);
-          if (details && details.results && Array.isArray(details.results)) {
-            cagematchResults = details.results;
-            // Merge Cagematch data into event display object
-            if (details['Name of the event']) event.cagematch_name = details['Name of the event'];
-            if (details.Promotion) event.cagematch_promotion = details.Promotion;
-            if (details.Type) event.cagematch_type = details.Type;
-            if (details.Location) event.cagematch_location = details.Location;
-            if (details.Arena) event.cagematch_arena = details.Arena;
-            if (details.Attendance != null) event.cagematch_attendance = details.Attendance;
-            event.cagematch_id = eventId;
-            event.cagematch_rating = match['Rating'];
-            event.cagematch_votes = match['Votes'];
-          }
+      cagematchData = await DashboardStore.scrapeCagematchEvent(event.name);
+      if (cagematchData) {
+        // Merge Cagematch data into event display object
+        if (cagematchData.eventName) event.cagematch_name = cagematchData.eventName;
+        if (cagematchData.promotion) event.cagematch_promotion = cagematchData.promotion;
+        if (cagematchData.eventType) event.cagematch_type = cagematchData.eventType;
+        if (cagematchData.location) event.cagematch_location = cagematchData.location;
+        if (cagematchData.arena) event.cagematch_arena = cagematchData.arena;
+        if (cagematchData.attendance != null) event.cagematch_attendance = cagematchData.attendance;
+        if (cagematchData.id) event.cagematch_id = cagematchData.id;
+        if (cagematchData.eventRating != null) {
+          event.cagematch_rating = cagematchData.eventRating;
+          event.cagematch_votes = cagematchData.eventVotes;
         }
       }
     } catch (e) {
-      console.warn('Cagematch fetch failed:', e);
+      console.warn('Native Cagematch scrape failed:', e);
     }
   }
 
-  renderEventDetail(content, event, matches, cagematchResults, apiKey);
+  renderEventDetail(content, event, matches, cagematchData);
 }
 
-function renderEventDetail(container, event, matches, cagematchResults, apiKey) {
+function renderEventDetail(container, event, matches, cagematchData) {
   if (!event) {
     container.innerHTML = '<div class="empty-state" style="padding:60px;"><div class="icon">⚠️</div><h3>Event not found</h3></div>';
     return;
@@ -893,25 +880,10 @@ function renderEventDetail(container, event, matches, cagematchResults, apiKey) 
   const sourceUrl = event.url || '';
   const cagematchUrl = event.cagematch_id ? `https://www.cagematch.net/?id=1&nr=${event.cagematch_id}` : '';
 
-  // ── Parse Cagematch match results ──
-  let commentCount = 0;
-  let ratingCount = 0;
-  const parsedMatches = cagematchResults.map(s => {
-    if (!s || typeof s !== 'string') return null;
-    const trimmed = s.trim();
-    if (trimmed.startsWith('Number of comments:')) {
-      commentCount = parseInt(trimmed.replace('Number of comments:', '')) || 0;
-      return null;
-    }
-    if (trimmed.startsWith('Current Total Rating')) { ratingCount++; return null; }
-    if (trimmed.startsWith('Valid votes:')) return null;
-    if (trimmed.startsWith('All workers')) { return null; }
-    if (trimmed.startsWith('---')) return null;
-    if (trimmed.startsWith('Not eligible')) return null;
-    if (trimmed.startsWith('::::')) return null;
-    if (/^[A-Za-z]/.test(trimmed) && !trimmed.includes(' defeats ') && !trimmed.includes(' defeats ')) return null;
-    return trimmed;
-  }).filter(Boolean);
+  // ── Determine display data ──
+  // Native scraper returns structured matches. Local DB has {participants[], winner} format.
+  const hasScrapedData = cagematchData && cagematchData.matches && cagematchData.matches.length > 0;
+  const displayMatches = hasScrapedData ? cagematchData.matches : matches;
 
   // ── Build HTML ──
   let html = '';
@@ -921,8 +893,8 @@ function renderEventDetail(container, event, matches, cagematchResults, apiKey) 
     <div class="detail-hero promo-${promoClass}">
       <div class="detail-hero-bg"></div>
       <div class="detail-hero-content">
-        <div class="detail-promo-badge">${esc(event.promotion || 'Indie')}</div>
-        <h1 class="detail-title">${esc(event.name)}</h1>
+        <div class="detail-promo-badge">${event.cagematch_promotion ? esc(event.cagematch_promotion) : esc(event.promotion || 'Indie')}</div>
+        <h1 class="detail-title">${esc(event.cagematch_name || event.name)}</h1>
         <div class="detail-date-badge">
           <span>📅</span>
           <span>${formatDate(event.date)}</span>
@@ -932,18 +904,18 @@ function renderEventDetail(container, event, matches, cagematchResults, apiKey) 
 
   // INFO GRID
   html += `<div class="detail-info-grid">`;
-  html += `<div class="detail-info-card"><div class="label">Type</div><div class="value">${esc(event.event_type || 'Event')}</div></div>`;
-  html += `<div class="detail-info-card"><div class="label">Promotion</div><div class="value">${esc(event.promotion || 'N/A')}</div></div>`;
-  if (event.venue || event.cagematch_arena) {
+  html += `<div class="detail-info-card"><div class="label">Type</div><div class="value">${esc(event.cagematch_type || event.event_type || 'Event')}</div></div>`;
+  html += `<div class="detail-info-card"><div class="label">Promotion</div><div class="value">${esc(event.cagematch_promotion || event.promotion || 'N/A')}</div></div>`;
+  if (event.cagematch_arena || event.venue) {
     html += `<div class="detail-info-card"><div class="label">Venue</div><div class="value">${esc(event.cagematch_arena || event.venue || 'N/A')}</div></div>`;
   }
-  if (event.location || event.cagematch_location) {
+  if (event.cagematch_location || event.location) {
     html += `<div class="detail-info-card"><div class="label">Location</div><div class="value">${esc(event.cagematch_location || event.location || 'N/A')}</div></div>`;
   }
   if (event.cagematch_attendance != null) {
     html += `<div class="detail-info-card"><div class="label">Attendance</div><div class="value">👥 ${Number(event.cagematch_attendance).toLocaleString()}</div></div>`;
   }
-  if (event.cagematch_rating) {
+  if (event.cagematch_rating != null) {
     html += `<div class="detail-info-card"><div class="label">Cagematch Rating</div><div class="value">⭐ ${esc(event.cagematch_rating)}${event.cagematch_votes ? ' (' + esc(event.cagematch_votes) + ' votes)' : ''}</div></div>`;
   }
   if (event.rating != null) {
@@ -965,30 +937,43 @@ function renderEventDetail(container, event, matches, cagematchResults, apiKey) 
   }
 
   // MATCH CARD SECTION
-  const isComplete = parsedMatches.length > 0;
-  const displayMatches = isComplete ? parsedMatches : matches;
+  const sectionLabel = hasScrapedData ? '📋 Match Card' : '🤼 Matches';
+  html += `<h2 class="detail-section-title">${sectionLabel} <span class="detail-count-badge">${displayMatches ? displayMatches.length : 0}</span></h2>`;
 
-  html += `<h2 class="detail-section-title">${isComplete ? '📋 Match Card' : '🤼 Matches'} <span class="detail-count-badge">${displayMatches.length}</span></h2>`;
-
-  if (displayMatches.length === 0) {
+  if (!displayMatches || displayMatches.length === 0) {
     html += `<div class="empty-state" style="padding:30px;"><p style="color:var(--text-muted);">No match data available yet. Add matches for this event to get started.</p></div>`;
-  } else if (isComplete) {
-    // Rich Cagematch-style match list
+  } else if (hasScrapedData) {
+    // Native scraper structured matches
     html += `<div class="detail-cagematch-card">`;
     displayMatches.forEach(m => {
-      const isTitleMatch = m.includes('Title') || m.includes('TITLE');
-      const isTitleChange = m.includes('TITLE CHANGE');
-      const isDQ = m.includes('DQ');
-      const parts = m.split(' defeats ');
-      const winner = parts[0]?.trim() || '';
-      const rest = parts[1]?.trim() || m;
+      // Build match header with type and rating
+      let matchHeader = '';
+      if (m.type) {
+        matchHeader += `<span class="detail-match-type">${esc(m.type)}</span>`;
+      }
+      if (m.rating != null && !m.isIneligible) {
+        const stars = Math.round(m.rating / 2);
+        matchHeader += `<span class="detail-match-rating">${'⭐'.repeat(Math.max(1, stars))} ${m.rating.toFixed(1)}</span>`;
+      }
+      if (m.duration) {
+        matchHeader += `<span class="detail-match-duration">⏱ ${esc(m.duration)}</span>`;
+      }
 
-      html += `<div class="detail-match-row ${isTitleChange ? 'title-change' : ''}">`;
-      html += `<div class="detail-match-winner">🏆 ${esc(winner)}</div>`;
-      html += `<div class="detail-match-result">defeats ${esc(rest)}</div>`;
-      if (isTitleChange) html += `<div class="detail-match-badge change-badge">⚡ TITLE CHANGE</div>`;
-      else if (isDQ) html += `<div class="detail-match-badge dq-badge">🚫 DQ</div>`;
-      else if (isTitleMatch) html += `<div class="detail-match-badge title-badge">👑 Title Match</div>`;
+      html += `<div class="detail-match-row ${m.isTitleChange ? 'title-change' : ''}">`;
+      if (matchHeader) {
+        html += `<div class="detail-match-header">${matchHeader}</div>`;
+      }
+      if (m.isDraw) {
+        html += `<div class="detail-match-draw">🤝 ${esc(m.winner)} vs ${esc(m.loser)} — Draw</div>`;
+      } else if (m.winner && (m.loser || m.raw)) {
+        html += `<div class="detail-match-winner">🏆 ${esc(m.winner)}</div>`;
+        html += `<div class="detail-match-result">${m.loser ? 'defeats ' + esc(m.loser) : esc(m.raw)}</div>`;
+      } else if (m.raw) {
+        html += `<div class="detail-match-result">${esc(m.raw)}</div>`;
+      }
+      if (m.isTitleChange) html += `<div class="detail-match-badge change-badge">⚡ TITLE CHANGE</div>`;
+      else if (m.isTitleMatch) html += `<div class="detail-match-badge title-badge">👑 Title Match</div>`;
+      if (m.wonRating) html += `<div class="detail-match-won">Dave Meltzer: ${esc(m.wonRating)}</div>`;
       html += `</div>`;
     });
     html += `</div>`;
@@ -1020,14 +1005,7 @@ function formatDate(dateStr) {
 // ══════════════════════════════════════════════
 // SETTINGS
 // ══════════════════════════════════════════════
-function saveSettings() {
-  const key = document.getElementById('settingsApiKey').value.trim();
-  dash.state.settings.cagematchKey = key;
-  localStorage.setItem('dashboardSettings', JSON.stringify(dash.state.settings));
-  const importField = document.getElementById('cagematchApiKey');
-  if (importField) importField.value = key;
-  showToast('✅ Settings saved', 'success');
-}
+// Settings panel simplified — no API keys needed with native scraper.
 
 async function clearAllData() {
   await DashboardStore.clearAll();
@@ -1083,35 +1061,33 @@ async function importFromFile(event) {
 }
 
 // ══════════════════════════════════════════════
-// IMPORT FROM CAGEMATCH
+// IMPORT FROM CAGEMATCH (Native — zero API keys)
 // ══════════════════════════════════════════════
 let cagematchResults = [];
 
 async function importCagematch() {
-  const apiKey = document.getElementById('cagematchApiKey').value.trim() || dash.state.settings.cagematchKey;
   const query = document.getElementById('cagematchQuery').value.trim();
   const container = document.getElementById('cagematchResults');
 
-  if (!apiKey) { container.innerHTML = '<div class="toast error" style="padding:10px;">⚠️ Enter your Parse.bot API key first (or save it in Settings)</div>'; return; }
-  if (!query) { container.innerHTML = '<div class="toast error" style="padding:10px;">⚠️ Enter a search term</div>'; return; }
+  if (!query) { container.innerHTML = '<div class="toast error" style="padding:10px;">⚠️ Enter an event name to search</div>'; return; }
 
   container.innerHTML = '<div class="loading-spinner" style="padding:16px;"><div class="spinner"></div> Searching Cagematch...</div>';
 
   try {
-    const searchRes = await DashboardStore.importFromCagematch(apiKey, 'search_site', { query });
-    const results = searchRes?.data?.results || [];
-    cagematchResults = results;
+    // Step 1: Search by name
+    const searchResults = await NativeScraper.searchEvent(query);
 
-    if (!results.length) {
-      container.innerHTML = '<div class="toast" style="padding:10px;">No results found on Cagematch.</div>';
+    if (!searchResults || !searchResults.length) {
+      container.innerHTML = '<div class="toast" style="padding:10px;">No events found on Cagematch. Try a different search term.</div>';
       return;
     }
 
-    container.innerHTML = results.slice(0, 15).map(r => `
-      <div class="dash-card" style="cursor:pointer;margin-bottom:4px;padding:10px 16px;" onclick="importCagematchDetail('${esc(r.Gimmick_id || r.ID || '')}', '${esc(r.Gimmick || r.Name || query)}')">
+    cagematchResults = searchResults;
+    container.innerHTML = searchResults.slice(0, 15).map(r => `
+      <div class="dash-card" style="cursor:pointer;margin-bottom:4px;padding:10px 16px;" onclick="importCagematchDetail('${r.id}')">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div><strong>${esc(r.Gimmick || r.Name || 'Unknown')}</strong></div>
-          <span style="color:var(--text-muted);font-size:12px;">${r.Promotion_text || r.Promotion || ''}${r.Rating ? ' ⭐' + r.Rating : ''}</span>
+          <div><strong>${esc(r.name || 'Unknown')}</strong></div>
+          <span style="color:var(--text-muted);font-size:12px;">${esc(r.promotion || '')}${r.date ? ' · ' + esc(r.date) : ''}</span>
         </div>
       </div>
     `).join('') + '<div style="display:flex;gap:8px;margin-top:8px;"><button class="btn btn-primary btn-sm" onclick="importCagematchAll()">📥 Import All Visible</button></div>';
@@ -1120,32 +1096,70 @@ async function importCagematch() {
   }
 }
 
-async function importCagematchDetail(id, name) {
-  const apiKey = document.getElementById('cagematchApiKey').value.trim() || dash.state.settings.cagematchKey;
+async function importCagematchDetail(eventId) {
   const container = document.getElementById('cagematchResults');
-  if (!id) return;
+  if (!eventId) return;
 
-  container.innerHTML = `<div class="loading-spinner" style="padding:16px;"><div class="spinner"></div> Fetching ${esc(name)}...</div>`;
+  const eventObj = cagematchResults.find(r => r.id === eventId);
+  const eventName = eventObj ? eventObj.name : 'Event #' + eventId;
+  container.innerHTML = `<div class="loading-spinner" style="padding:16px;"><div class="spinner"></div> Fetching ${esc(eventName)}...</div>`;
 
   try {
-    let imported = { events: 0, matches: 0, skipped: 0 };
-    try {
-      const matchesRes = await DashboardStore.importFromCagematch(apiKey, 'get_wrestler_matches', { id });
-      const matchEntries = matchesRes?.data?.matches || [];
-      const matches = matchEntries.map(m => ({
-        source: 'cagematch', source_id: String(m.id || ''),
-        event_name: m.event || '', promotion: m.promotion || m.Promotion || '',
-        date: m.Date || m.date || '', match_type: m.match_type || 'Singles',
-        participants: [name, ...(m.opponent ? [m.opponent] : [])],
-        winner: m.result?.includes('wins') ? name : (m.opponent || ''),
-        rating: m.Rating ? parseFloat(m.Rating) : null
-      }));
-      const result = await DashboardStore.importMany([], matches);
-      imported.matches += result.matches;
-      imported.skipped += result.skipped;
-    } catch (e) {}
+    // Step 2: Fetch event details
+    const details = await NativeScraper.getEvent(eventId);
+    if (!details) {
+      container.innerHTML = '<div class="toast error" style="padding:10px;">❌ Could not fetch event details from Cagematch.</div>';
+      return;
+    }
 
-    container.innerHTML = `<div class="toast success" style="padding:10px;">✅ Imported matches for ${esc(name)}: ${imported.matches} new, ${imported.skipped} duplicates</div>`;
+    let imported = { events: 0, matches: 0, skipped: 0 };
+
+    // Create event entry
+    const eventEntry = {
+      source: 'cagematch',
+      source_id: String(details.id || eventId),
+      name: details.eventName || eventName,
+      date: details.date || '',
+      promotion: details.promotion || '',
+      location: details.location || '',
+      venue: details.arena || '',
+      event_type: details.eventType || 'Event',
+      url: 'https://www.cagematch.net/?id=1&nr=' + (details.id || eventId)
+    };
+    const eventResult = await DashboardStore.importMany([eventEntry], []);
+    imported.events += eventResult.events || 0;
+    imported.skipped += eventResult.skipped || 0;
+
+    // Create match entries
+    if (details.matches && details.matches.length > 0) {
+      const matchEntries = details.matches.map(m => ({
+        source: 'cagematch',
+        source_id: '',
+        event_name: details.eventName || eventName,
+        event_id: eventEntry.source_id,
+        promotion: details.promotion || '',
+        date: details.date || '',
+        match_type: m.type || 'Singles Match',
+        participants: [m.winner, m.loser].filter(Boolean),
+        winner: m.winner,
+        loser: m.loser,
+        is_draw: m.isDraw || false,
+        duration: m.duration || '',
+        rating: m.rating != null ? m.rating : null,
+        votes: m.votes || null,
+        title_match: m.isTitleMatch || false,
+        title_change: m.isTitleChange || false,
+        is_ineligible: m.isIneligible || false
+      }));
+
+      const matchResult = await DashboardStore.importMany([], matchEntries);
+      imported.matches += matchResult.matches || 0;
+      imported.skipped += matchResult.skipped || 0;
+    }
+
+    container.innerHTML = `<div class="toast success" style="padding:10px;">
+      ✅ Imported "${esc(details.eventName || eventName)}": ${imported.events} events, ${imported.matches} matches${imported.skipped > 0 ? ' (' + imported.skipped + ' dups skipped)' : ''}
+    </div>`;
     renderMatches();
     loadOverview();
   } catch (err) {
@@ -1158,29 +1172,59 @@ async function importCagematchAll() {
   let total = { events: 0, matches: 0, skipped: 0 };
 
   for (const r of cagematchResults.slice(0, 10)) {
-    const id = r.Gimmick_id || r.ID || '';
-    if (!id) continue;
-    container.innerHTML = `<div class="loading-spinner" style="padding:16px;"><div class="spinner"></div> 📥 Importing ${esc(r.Gimmick || r.Name)}...</div>`;
-    const apiKey = document.getElementById('cagematchApiKey').value.trim() || dash.state.settings.cagematchKey;
+    if (!r.id) continue;
+    container.innerHTML = `<div class="loading-spinner" style="padding:16px;"><div class="spinner"></div> 📥 Importing ${esc(r.name)}...</div>`;
+
     try {
-      const matchesRes = await DashboardStore.importFromCagematch(apiKey, 'get_wrestler_matches', { id });
-      const matchEntries = matchesRes?.data?.matches || [];
-      const matches = matchEntries.map(m => ({
-        source: 'cagematch', source_id: String(m.id || ''),
-        event_name: m.event || '', promotion: m.promotion || m.Promotion || '',
-        date: m.Date || m.date || '', match_type: m.match_type || 'Singles',
-        participants: [r.Gimmick || r.Name || '', ...(m.opponent ? [m.opponent] : [])],
-        winner: m.result?.includes('wins') ? (r.Gimmick || '') : (m.opponent || ''),
-        rating: m.Rating ? parseFloat(m.Rating) : null
-      }));
-      const result = await DashboardStore.importMany([], matches);
-      total.matches += result.matches;
-      total.skipped += result.skipped;
-      await new Promise(r => setTimeout(r, 300));
-    } catch (e) { console.warn('Failed:', r.Gimmick, e.message); }
+      const details = await NativeScraper.getEvent(r.id);
+      if (!details) continue;
+
+      const eventEntry = {
+        source: 'cagematch',
+        source_id: String(details.id || r.id),
+        name: details.eventName || r.name,
+        date: details.date || r.date || '',
+        promotion: details.promotion || r.promotion || '',
+        location: details.location || '',
+        venue: details.arena || '',
+        event_type: details.eventType || 'Event',
+        url: 'https://www.cagematch.net/?id=1&nr=' + (details.id || r.id)
+      };
+      const eventResult = await DashboardStore.importMany([eventEntry], []);
+      total.events += eventResult.events || 0;
+      total.skipped += eventResult.skipped || 0;
+
+      if (details.matches && details.matches.length > 0) {
+        const matchEntries = details.matches.map(m => ({
+          source: 'cagematch',
+          source_id: '',
+          event_name: details.eventName || r.name,
+          event_id: eventEntry.source_id,
+          promotion: details.promotion || r.promotion || '',
+          date: details.date || r.date || '',
+          match_type: m.type || 'Singles Match',
+          participants: [m.winner, m.loser].filter(Boolean),
+          winner: m.winner,
+          loser: m.loser,
+          is_draw: m.isDraw || false,
+          duration: m.duration || '',
+          rating: m.rating != null ? m.rating : null,
+          votes: m.votes || null,
+          title_match: m.isTitleMatch || false,
+          title_change: m.isTitleChange || false,
+          is_ineligible: m.isIneligible || false
+        }));
+
+        const matchResult = await DashboardStore.importMany([], matchEntries);
+        total.matches += matchResult.matches || 0;
+        total.skipped += matchResult.skipped || 0;
+      }
+
+      await new Promise(r => setTimeout(r, 300)); // Rate-limit between fetches
+    } catch (e) { console.warn('Failed:', r.name, e.message); }
   }
 
-  container.innerHTML = `<div class="toast success" style="padding:10px;">✅ Batch complete: ${total.matches} new matches, ${total.skipped} duplicates</div>`;
+  container.innerHTML = `<div class="toast success" style="padding:10px;">✅ Batch complete: ${total.events} events, ${total.matches} matches${total.skipped > 0 ? ' (' + total.skipped + ' dups skipped)' : ''}</div>`;
   renderMatches();
   loadOverview();
 }
