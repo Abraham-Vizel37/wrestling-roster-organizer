@@ -1,5 +1,5 @@
 // ── Dashboard Store — Match & Event Database (IndexedDB) ──
-// v1.1 — Universal wrestling data format + auto-population
+// v1.2 — Auto-populates past 2 weeks AND upcoming events
 // ======================================================
 
 const DashboardStore = {
@@ -7,6 +7,7 @@ const DashboardStore = {
   DB_VERSION: 2,
   db: null,
   CACHE_TTL_MS: 6 * 60 * 60 * 1000, // 6 hours
+  RECENT_DAYS: 14, // How far back to auto-populate
 
   // ── Data Schema ──
   // EVENT: id, source, source_id, name, promotion, date, venue, location,
@@ -15,27 +16,39 @@ const DashboardStore = {
   //        match_type, stipulation, participants[], winner, result_type,
   //        rating, won_rating, title_match, title_name, notes
 
-  // ── Seed Data: Upcoming Major Events (Aug–Oct 2026) ──
+  // ── Seed Data: Upcoming + Recent (past 2 weeks) ──
   // Auto-populated on first visit. Updated silently from Wikipedia API.
   get SEED_EVENTS() {
     const today = new Date().toISOString().split('T')[0];
     return [
+      // ≈ Past 2 weeks (Jul 16–30, 2026)
+      { name: 'AEW Dynamite — 2026-07-15', promotion: 'All Elite Wrestling', date: '2026-07-15', event_type: 'TV', source: 'seed' },
+      { name: 'TNA Impact — 2026-07-16', promotion: 'Total Nonstop Action Wrestling', date: '2026-07-16', event_type: 'TV', source: 'seed' },
+      { name: 'WWE SmackDown — 2026-07-17', promotion: 'WWE', date: '2026-07-17', event_type: 'TV', source: 'seed' },
+      { name: 'AEW Rampage — 2026-07-17', promotion: 'All Elite Wrestling', date: '2026-07-17', event_type: 'TV', source: 'seed' },
+      { name: 'WWE Saturday Night\'s Main Event', promotion: 'WWE', date: '2026-07-18', venue: 'Moda Center', location: 'Portland, OR', event_type: 'Special', source: 'seed' },
+      { name: 'AEW Collision — 2026-07-18', promotion: 'All Elite Wrestling', date: '2026-07-18', event_type: 'TV', source: 'seed' },
+      { name: 'WWE Raw — 2026-07-20', promotion: 'WWE', date: '2026-07-20', event_type: 'TV', source: 'seed' },
+      { name: 'WWE NXT — 2026-07-21', promotion: 'WWE', date: '2026-07-21', event_type: 'TV', source: 'seed' },
+      { name: 'AEW Dynamite — 2026-07-22', promotion: 'All Elite Wrestling', date: '2026-07-22', event_type: 'TV', source: 'seed' },
+      { name: 'TNA Impact — 2026-07-23', promotion: 'Total Nonstop Action Wrestling', date: '2026-07-23', event_type: 'TV', source: 'seed' },
+      { name: 'WWE SmackDown — 2026-07-24', promotion: 'WWE', date: '2026-07-24', event_type: 'TV', source: 'seed' },
+      { name: 'AEW Rampage — 2026-07-24', promotion: 'All Elite Wrestling', date: '2026-07-24', event_type: 'TV', source: 'seed' },
+      { name: 'AEW Collision — 2026-07-25', promotion: 'All Elite Wrestling', date: '2026-07-25', event_type: 'TV', source: 'seed' },
+      { name: 'WWE Raw — 2026-07-27', promotion: 'WWE', date: '2026-07-27', event_type: 'TV', source: 'seed' },
+      { name: 'WWE NXT — 2026-07-28', promotion: 'WWE', date: '2026-07-28', event_type: 'TV', source: 'seed' },
+      { name: 'AEW Dynamite — 2026-07-29', promotion: 'All Elite Wrestling', date: '2026-07-29', event_type: 'TV', source: 'seed' },
+      // Upcoming
       { name: 'SummerSlam', promotion: 'WWE', date: '2026-08-01', venue: 'U.S. Bank Stadium', location: 'Minneapolis, MN', event_type: 'PPV', source: 'seed' },
       { name: 'AEW Dynamite — 2026-08-05', promotion: 'All Elite Wrestling', date: '2026-08-05', event_type: 'TV', source: 'seed' },
-      { name: 'AEW Dynamite — 2026-08-12', promotion: 'All Elite Wrestling', date: '2026-08-12', event_type: 'TV', source: 'seed' },
       { name: 'NXT Heatwave', promotion: 'WWE', date: '2026-08-09', event_type: 'PPV', source: 'seed' },
+      { name: 'AEW Dynamite — 2026-08-12', promotion: 'All Elite Wrestling', date: '2026-08-12', event_type: 'TV', source: 'seed' },
       { name: 'TNA Lockdown', promotion: 'Total Nonstop Action Wrestling', date: '2026-08-23', event_type: 'PPV', source: 'seed' },
       { name: 'AEW All In', promotion: 'All Elite Wrestling', date: '2026-08-30', location: 'London, England', event_type: 'PPV', source: 'seed' },
-      { name: 'AEW Dynamite — 2026-09-02', promotion: 'All Elite Wrestling', date: '2026-09-02', event_type: 'TV', source: 'seed' },
-      { name: 'NXT No Mercy', promotion: 'WWE', date: '2026-09-06', event_type: 'PPV', source: 'seed' },
       { name: 'WWE Money in the Bank', promotion: 'WWE', date: '2026-09-07', event_type: 'PPV', source: 'seed' },
-      { name: 'AEW Grand Slam', promotion: 'All Elite Wrestling', date: '2026-09-15', event_type: 'PPV', source: 'seed' },
-      { name: 'NXT Halloween Havoc', promotion: 'WWE', date: '2026-10-04', event_type: 'PPV', source: 'seed' },
-      { name: 'WWE Bad Blood', promotion: 'WWE', date: '2026-10-11', event_type: 'PPV', source: 'seed' },
       { name: 'TNA Bound for Glory', promotion: 'Total Nonstop Action Wrestling', date: '2026-10-11', event_type: 'PPV', source: 'seed' },
-      { name: 'AEW WrestleDream', promotion: 'All Elite Wrestling', date: '2026-10-18', event_type: 'PPV', source: 'seed' },
       { name: 'WWE Crown Jewel', promotion: 'WWE', date: '2026-10-31', location: 'Riyadh, Saudi Arabia', event_type: 'PPV', source: 'seed' },
-    ].filter(e => e.date >= today).slice(0, 12);
+    ];
   },
 
   // ── DB Init ──
@@ -62,7 +75,6 @@ const DashboardStore = {
           }
         }
         if (e.oldVersion < 2) {
-          // v2: add image_url, description, last_fetched to events
           if (!db.objectStoreNames.contains('meta')) {
             db.createObjectStore('meta', { keyPath: 'key' });
           }
@@ -177,6 +189,19 @@ const DashboardStore = {
     return new Promise((resolve, reject) => { const r = store.add(match); r.onsuccess = () => resolve(match); r.onerror = () => reject(r.error); });
   },
 
+  async updateMatch(id, data) {
+    const existing = await this.getMatch(id);
+    if (!existing) throw new Error('Match not found');
+    Object.assign(existing, data);
+    existing.updated = Date.now();
+    const store = this._openStore('matches', 'readwrite');
+    return new Promise((resolve, reject) => {
+      const r = store.put(existing);
+      r.onsuccess = () => resolve(existing);
+      r.onerror = () => reject(r.error);
+    });
+  },
+
   async getMatch(id) {
     const store = this._openStore('matches', 'readonly');
     return new Promise(r => { const q = store.get(id); q.onsuccess = () => r(q.result || null); q.onerror = () => r(null); });
@@ -202,7 +227,10 @@ const DashboardStore = {
   async getRecentEvents() {
     const all = await this.getAllEvents();
     const today = new Date().toISOString().split('T')[0];
-    return all.filter(e => e.date < today && e.date).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 10);
+    const past = new Date();
+    past.setDate(past.getDate() - this.RECENT_DAYS);
+    const cutoff = past.toISOString().split('T')[0];
+    return all.filter(e => e.date < today && e.date >= cutoff).sort((a,b) => b.date.localeCompare(a.date));
   },
 
   async getUniquePromotions() {
@@ -216,6 +244,7 @@ const DashboardStore = {
 
   // ── Auto-Population System ──
   // Tries: Wikipedia API → seed data fallback
+  // Covers past 14 days + all upcoming events
   // Results cached in IndexedDB 'meta' store
 
   async _getMeta(key) {
@@ -243,6 +272,13 @@ const DashboardStore = {
     return events.length < 3 || (Date.now() - last > this.CACHE_TTL_MS);
   },
 
+  // Returns the cutoff date string: today - RECENT_DAYS
+  _recentDateCutoff() {
+    const d = new Date();
+    d.setDate(d.getDate() - this.RECENT_DAYS);
+    return d.toISOString().split('T')[0];
+  },
+
   async autoPopulate(force = false) {
     const needs = force ? true : await this.needsPopulation();
     if (!needs) return { source: 'cache', count: (await this.getAllEvents()).length };
@@ -260,7 +296,7 @@ const DashboardStore = {
       console.warn('[DashboardStore] Wikipedia fetch failed:', err.message);
     }
 
-    // Fallback to seed data
+    // Fallback to seed data (includes past 2 weeks + upcoming)
     const existing = await this.getAllEvents();
     if (existing.length === 0) {
       let imported = 0;
@@ -279,25 +315,84 @@ const DashboardStore = {
   },
 
   // ── Wikipedia API Fetcher ──
-  // Searches for upcoming major wrestling events and parses infoboxes
+  // Fetches both upcoming AND recent events (past 2 weeks)
   async _fetchFromWikipedia() {
-    const promotions = ['WWE', 'AEW', 'TNA'];
-    const queries = promotions.map(p => `2026 ${p} events`);
-    let totalImported = 0;
-
-    // Check what we already have to avoid duplicates
     const existing = await this.getAllEvents();
     const existingNames = new Set(existing.map(e => e.name.toLowerCase()));
+    let totalImported = 0;
+    const cutoff = this._recentDateCutoff();
 
-    // Known upcoming events to enrich from Wikipedia
-    const knownEvents = [
-      { search: 'SummerSlam (2026)', promo: 'WWE', type: 'PPV' },
-      { search: 'NXT_Heatwave_(2026)', promo: 'WWE', type: 'PPV' },
-      { search: 'Money_in_the_Bank_(2026)', promo: 'WWE', type: 'PPV' },
-      { search: 'Saturday_Night%27s_Main_Event_%E2%80%93_2026-07-18', promo: 'WWE', type: 'Special' },
+    // ---- RECENT events: try "latest results" pages for weekly shows ----
+    const recentPages = [
+      // WWE Raw results page — latest episode
+      { page: 'WWE_Raw,_July_27,_2026', promo: 'WWE', type: 'TV', date: '2026-07-27' },
+      { page: 'WWE_Raw,_July_20,_2026', promo: 'WWE', type: 'TV', date: '2026-07-20' },
+      { page: 'WWE_SmackDown,_July_24,_2026', promo: 'WWE', type: 'TV', date: '2026-07-24' },
+      { page: 'WWE_SmackDown,_July_17,_2026', promo: 'WWE', type: 'TV', date: '2026-07-17' },
+      { page: 'WWE_NXT,_July_28,_2026', promo: 'WWE', type: 'TV', date: '2026-07-28' },
+      { page: 'WWE_NXT,_July_21,_2026', promo: 'WWE', type: 'TV', date: '2026-07-21' },
+      { page: 'AEW_Dynamite,_July_29,_2026', promo: 'All Elite Wrestling', type: 'TV', date: '2026-07-29' },
+      { page: 'AEW_Dynamite,_July_22,_2026', promo: 'All Elite Wrestling', type: 'TV', date: '2026-07-22' },
+      { page: 'AEW_Dynamite,_July_15,_2026', promo: 'All Elite Wrestling', type: 'TV', date: '2026-07-15' },
+      { page: 'AEW_Rampage,_July_24,_2026', promo: 'All Elite Wrestling', type: 'TV', date: '2026-07-24' },
+      { page: 'AEW_Rampage,_July_17,_2026', promo: 'All Elite Wrestling', type: 'TV', date: '2026-07-17' },
+      { page: 'TNA_Impact!,_July_23,_2026', promo: 'Total Nonstop Action Wrestling', type: 'TV', date: '2026-07-23' },
+      { page: 'TNA_Impact!,_July_16,_2026', promo: 'Total Nonstop Action Wrestling', type: 'TV', date: '2026-07-16' },
     ];
 
-    for (const ev of knownEvents) {
+    for (const ev of recentPages) {
+      try {
+        const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${ev.page}&prop=text&section=0&format=json&origin=*`;
+        const resp = await fetch(url);
+        if (!resp.ok) continue;
+        const json = await resp.json();
+        if (!json.parse?.text?.['*']) continue;
+
+        const html = json.parse.text['*'];
+        const pageTitle = (json.parse.title || ev.page).replace(/_/g, ' ').trim();
+        const nameLower = (ev.page + '|' + pageTitle).toLowerCase();
+
+        const findField = (label) => {
+          const re = new RegExp(label + '\\\\s*<td[^>]*>([\\\\s\\\\S]*?)<\\\\/td>', 'i');
+          const m = html.match(re);
+          if (!m) return '';
+          return m[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').trim();
+        };
+
+        const venue = findField('Venue') || findField('Arena');
+        const city = findField('City') || findField('Location');
+
+        if (existingNames.has(nameLower)) continue;
+
+        await this.createEvent({
+          source: 'wikipedia',
+          source_id: 'wiki_recent_' + (json.parse.pageid || ev.page),
+          name: `${ev.promo} ${pageTitle.replace(/^WWE\s*/i, '').replace(/^AEW\s*/i, '').replace(/Total\s*Nonstop\s*Action\s*Wrestling\s*/i, '')}`,
+          promotion: ev.promo,
+          date: ev.date,
+          venue,
+          location: city,
+          event_type: ev.type
+        });
+        totalImported++;
+      } catch (err) {
+        console.warn('[DashboardStore] Wikipedia recent fetch error for', ev.page, err.message);
+      }
+      // Small delay to be kind to the API
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    // ---- UPCOMING events: known PPV/Special pages ----
+    const upcomingEvents = [
+      { search: 'SummerSlam_(2026)', promo: 'WWE', type: 'PPV' },
+      { search: 'NXT_Heatwave_(2026)', promo: 'WWE', type: 'PPV' },
+      { search: 'Money_in_the_Bank_(2026)', promo: 'WWE', type: 'PPV' },
+      { search: 'AEW_All_In_(2026)', promo: 'All Elite Wrestling', type: 'PPV' },
+      { search: 'TNA_Lockdown_(2026)', promo: 'Total Nonstop Action Wrestling', type: 'PPV' },
+      { search: 'TNA_Bound_for_Glory_(2026)', promo: 'Total Nonstop Action Wrestling', type: 'PPV' },
+    ];
+
+    for (const ev of upcomingEvents) {
       try {
         const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${ev.search}&prop=text&section=0&format=json&origin=*`;
         const resp = await fetch(url);
@@ -307,10 +402,10 @@ const DashboardStore = {
 
         const html = json.parse.text['*'];
         const title = json.parse.title || '';
+        const nameLower = title.toLowerCase().replace(/_/g, ' ');
 
-        // Extract infobox data using regex
         const findField = (label) => {
-          const re = new RegExp(label + '\\s*<td[^>]*>([\\s\\S]*?)<\\/td>', 'i');
+          const re = new RegExp(label + '\\\\s*<td[^>]*>([\\\\s\\\\S]*?)<\\\\/td>', 'i');
           const m = html.match(re);
           if (!m) return '';
           return m[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').trim();
@@ -320,11 +415,9 @@ const DashboardStore = {
         const venue = findField('Venue');
         const city = findField('City') || findField('Location');
 
-        // Parse date
         let date = '';
         if (dateStr) {
-          // Try "August 1–2, 2026" format → "2026-08-01"
-          const dateMatch = dateStr.match(/(\w+)\s+(\d+)[–-]?\d*,\s*(\d{4})/);
+          const dateMatch = dateStr.match(/(\\w+)\\s+(\\d+)[–-]?\\d*,\\s*(\\d{4})/);
           if (dateMatch) {
             const months = { 'January':'01','February':'02','March':'03','April':'04','May':'05','June':'06','July':'07','August':'08','September':'09','October':'10','November':'11','December':'12' };
             const mon = months[dateMatch[1]];
@@ -332,16 +425,13 @@ const DashboardStore = {
           }
         }
 
-        const eventName = title.replace(/_/g, ' ').replace(/\(2026\)/g, '').trim();
-        const nameLower = eventName.toLowerCase();
-
-        // Skip if we already have this event
-        if (existingNames.has(nameLower)) continue;
+        const eventName = title.replace(/_/g, ' ').replace(/\\(2026\\)/g, '').trim();
+        if (existingNames.has(eventName.toLowerCase())) continue;
 
         await this.createEvent({
           source: 'wikipedia',
-          source_id: `wiki_${json.parse.pageid}`,
-          name: `WWE ${eventName}`,
+          source_id: 'wiki_upcoming_' + json.parse.pageid,
+          name: `${ev.promo} ${eventName}`,
           promotion: ev.promo,
           date,
           venue,
@@ -350,8 +440,9 @@ const DashboardStore = {
         });
         totalImported++;
       } catch (err) {
-        console.warn('[DashboardStore] Wikipedia fetch error for', ev.search, err.message);
+        console.warn('[DashboardStore] Wikipedia upcoming fetch error for', ev.search, err.message);
       }
+      await new Promise(r => setTimeout(r, 150));
     }
 
     return { count: totalImported };
