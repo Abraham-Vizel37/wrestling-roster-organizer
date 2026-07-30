@@ -1,135 +1,328 @@
-// ── Dashboard App — Live Match/Event Dashboard UI ──
-// =====================================================
+// ── Dashboard App v1.1 — Auto-population, Carousel, Modern UI ──
+// ==============================================================
 
-let dash = { state: { events: [], matches: [], settings: {} } };
+const dash = { state: { events: [], matches: [], settings: {} } };
 
-// ── Navigation ──
-function showSection(name) {
-  document.querySelectorAll('.dashboard-section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-link[data-section]').forEach(l => l.classList.remove('active'));
-
-  const section = document.getElementById('section-' + name);
-  if (section) section.classList.add('active');
-  const link = document.querySelector(`.nav-link[data-section="${name}"]`);
-  if (link) link.classList.add('active');
-
-  // Load data on section switch
-  const loads = {
-    'overview': loadOverview,
-    'events': renderEvents,
-    'matches': renderMatches,
-    'import': () => {},
-    'export': () => document.getElementById('exportPreview').style.display = 'none',
-    'settings': loadSettings
-  };
-  if (loads[name]) loads[name]();
+// ══════════════════════════════════════════════
+// TOAST SYSTEM
+// ══════════════════════════════════════════════
+function showToast(msg, type) {
+  const c = document.getElementById('toastContainer');
+  if (!c) return;
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type || '');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 3000);
 }
 
-// ── Boot ──
+// ══════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.dash-nav-btn');
+  if (!btn) return;
+  const name = btn.dataset.section;
+  if (!name) return;
+
+  document.querySelectorAll('.dash-nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.dash-content').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  const sec = document.getElementById('section-' + name);
+  if (sec) sec.classList.add('active');
+
+  const loads = {
+    overview: loadOverview,
+    events: renderEvents,
+    matches: renderMatches,
+  };
+  if (loads[name]) loads[name]();
+});
+
+// ══════════════════════════════════════════════
+// BOOT — Auto-populate on first load
+// ══════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     await DashboardStore.ready();
-    // Load saved API key
+
+    // Load saved settings
     const saved = localStorage.getItem('dashboardSettings');
-    if (saved) {
-      try { dash.state.settings = JSON.parse(saved); } catch(e) {}
-    }
-    if (dash.state.settings.cagematchKey) {
-      document.getElementById('settingsApiKey').value = dash.state.settings.cagematchKey;
-    }
+    if (saved) { try { dash.state.settings = JSON.parse(saved); } catch {} }
+    const keyField = document.getElementById('settingsApiKey');
+    if (keyField && dash.state.settings.cagematchKey) keyField.value = dash.state.settings.cagematchKey;
+
+    // Auto-populate
+    const cacheBadge = document.getElementById('cacheStatus');
+    cacheBadge.textContent = '📡 Fetching data...';
+    const popResult = await DashboardStore.autoPopulate();
+    if (popResult.source === 'cache') cacheBadge.textContent = '📦 Cached';
+    else if (popResult.source === 'wikipedia') cacheBadge.textContent = '🌐 Wikipedia API';
+    else if (popResult.source === 'seed') cacheBadge.textContent = '📋 Seed data';
+    else cacheBadge.textContent = '🔋 Ready';
+
+    // Kick off the UI
+    initCarousel();
     await loadOverview();
   } catch (err) {
     console.error('Dashboard boot error:', err);
-    document.getElementById('overviewStats').innerHTML =
-      `<p class="error">Failed to load: ${err.message}</p>`;
+    document.getElementById('statsGrid').innerHTML =
+      `<div class="dash-card"><p style="color:var(--text-muted);">⚠️ Initialisation error: ${esc(err.message)}. Refresh to retry.</p></div>`;
   }
 });
 
-// ── Settings ──
-function loadSettings() {
-  const key = document.getElementById('settingsApiKey');
-  if (dash.state.settings.cagematchKey) key.value = dash.state.settings.cagematchKey;
+// ══════════════════════════════════════════════
+// MANUAL REFRESH
+// ══════════════════════════════════════════════
+async function manualRefresh() {
+  const badge = document.getElementById('cacheStatus');
+  badge.textContent = '🔄 Refreshing...';
+  try {
+    const result = await DashboardStore.autoPopulate(true);
+    badge.textContent = '✅ ' + result.source;
+    showToast('✅ Data refreshed from ' + result.source, 'success');
+    loadOverview();
+  } catch (err) {
+    badge.textContent = '⚠️ Error';
+    showToast('❌ Refresh failed: ' + err.message, 'error');
+  }
 }
 
-function saveSettings() {
-  const key = document.getElementById('settingsApiKey').value.trim();
-  dash.state.settings.cagematchKey = key;
-  localStorage.setItem('dashboardSettings', JSON.stringify(dash.state.settings));
-  // Also sync to import section
-  const importField = document.getElementById('cagematchApiKey');
-  if (importField) importField.value = key;
-  app.showToast('✅ Settings saved');
+// ══════════════════════════════════════════════
+// CAROUSEL COMPONENT
+// ══════════════════════════════════════════════
+const carousel = {
+  index: 0, slides: [], timer: null, interval: 6000,
+
+  init(slides) {
+    this.slides = slides || [];
+    this.index = 0;
+    if (this.slides.length === 0) {
+      document.getElementById('heroSection').style.display = 'none';
+      return;
+    }
+    document.getElementById('heroSection').style.display = 'block';
+    this.render();
+    this.startAutoRotate();
+  },
+
+  render() {
+    const track = document.getElementById('carouselTrack');
+    const dots = document.getElementById('carouselDots');
+    if (!track || !dots) return;
+
+    track.innerHTML = this.slides.map((s, i) => `
+      <div class="carousel-slide" style="display:${i === this.index ? 'flex' : 'none'}">
+        <div class="carousel-content">
+          <span class="carousel-promo-badge badge-${s.promoClass || 'default'}">${esc(s.promotion || '')}</span>
+          <div class="carousel-title">${esc(s.name)}</div>
+          <div class="carousel-meta">
+            <span>📅 ${s.date || 'TBD'}</span>
+            ${s.venue ? `<span>📍 ${esc(s.venue)}</span>` : ''}
+            ${s.location ? `<span>🏙️ ${esc(s.location)}</span>` : ''}
+            ${s.event_type ? `<span>🎫 ${esc(s.event_type)}</span>` : ''}
+          </div>
+          ${s.desc ? `<div class="carousel-desc">${esc(s.desc)}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+
+    dots.innerHTML = this.slides.map((_, i) =>
+      `<button class="carousel-dot ${i === this.index ? 'active' : ''}" onclick="carousel.goTo(${i})"></button>`
+    ).join('');
+  },
+
+  goTo(i) {
+    if (i < 0) i = this.slides.length - 1;
+    if (i >= this.slides.length) i = 0;
+    this.index = i;
+    this.render();
+    this.resetAutoRotate();
+  },
+
+  prev() { this.goTo(this.index - 1); },
+  next() { this.goTo(this.index + 1); },
+
+  startAutoRotate() {
+    this.stopAutoRotate();
+    if (this.slides.length > 1) {
+      this.timer = setInterval(() => this.next(), this.interval);
+    }
+  },
+
+  stopAutoRotate() { if (this.timer) { clearInterval(this.timer); this.timer = null; } },
+  resetAutoRotate() { this.startAutoRotate(); }
+};
+
+async function initCarousel() {
+  const upcoming = await DashboardStore.getUpcomingEvents();
+  const top3 = upcoming.slice(0, 3);
+
+  if (top3.length === 0) {
+    carousel.init([]);
+    return;
+  }
+
+  const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna','New Japan Pro-Wrestling':'njpw','Ring of Honor':'roh' };
+  const slides = top3.map(e => ({
+    name: e.name,
+    promotion: e.promotion,
+    promoClass: promoMap[e.promotion] || 'default',
+    date: e.date || '',
+    venue: e.venue || '',
+    location: e.location || '',
+    event_type: e.event_type || '',
+    desc: e.description || `${e.promotion} presents ${e.name}${e.venue ? ' at ' + e.venue : ''}${e.location ? ' in ' + e.location : ''}.`,
+  }));
+
+  carousel.init(slides);
 }
 
-// ── Overview ──
+// ══════════════════════════════════════════════
+// ANIMATED COUNTER
+// ══════════════════════════════════════════════
+function animateCounter(el, target) {
+  if (!el) return;
+  const current = parseInt(el.textContent) || 0;
+  if (current === target) return;
+  const duration = 800;
+  const start = performance.now();
+  const step = (now) => {
+    const pct = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - pct, 3); // ease-out cubic
+    el.textContent = Math.floor(current + (target - current) * eased);
+    if (pct < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// ══════════════════════════════════════════════
+// OVERVIEW
+// ══════════════════════════════════════════════
 async function loadOverview() {
   const events = await DashboardStore.getAllEvents();
   const matches = await DashboardStore.getAllMatches();
   const upcoming = await DashboardStore.getUpcomingEvents();
+  const recent = await DashboardStore.getRecentEvents();
   const promos = await DashboardStore.getUniquePromotions();
+
   dash.state.events = events;
   dash.state.matches = matches;
 
-  document.getElementById('statEvents').textContent = events.length;
-  document.getElementById('statMatches').textContent = matches.length;
-  document.getElementById('statUpcoming').textContent = upcoming.length;
-  document.getElementById('statPromotions').textContent = promos.length;
+  // Animated stats
+  animateCounter(document.getElementById('statEvents'), events.length);
+  animateCounter(document.getElementById('statMatches'), matches.length);
+  animateCounter(document.getElementById('statUpcoming'), upcoming.length);
+  animateCounter(document.getElementById('statPromotions'), promos.length);
 
-  renderUpcomingEvents(upcoming);
+  // Update sub-labels
+  const today = new Date();
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+  const thisMonth = upcoming.filter(e => e.date <= monthEnd).length;
+  document.getElementById('statUpcomingSub').textContent = thisMonth + ' this month';
+
+  // Upcoming events grid
+  const upcomingContainer = document.getElementById('upcomingEvents');
+  document.getElementById('upcomingCount').textContent = upcoming.length;
+  renderEventCards(upcomingContainer, upcoming.slice(0, 6), 'upcomingEvents');
+
+  // Recent events grid
+  const recentContainer = document.getElementById('recentEvents');
+  document.getElementById('recentCount').textContent = recent.length;
+  renderEventCards(recentContainer, recent.slice(0, 6), 'recentEvents');
+
+  // News feed
   fetchNews();
 }
 
-function renderUpcomingEvents(events) {
-  const container = document.getElementById('upcomingEvents');
+function renderEventCards(container, events, prefix) {
   if (!events.length) {
-    container.innerHTML = '<p class="empty-state">No upcoming events. Import or add events to get started.</p>';
+    container.innerHTML = `
+      <div class="dash-card" style="grid-column:1/-1;">
+        <div class="empty-state" style="padding:24px;">
+          <div class="icon">📭</div>
+          <h3>No events yet</h3>
+          <p>Events are auto-loaded on first visit. Try refreshing or import from Cagematch.</p>
+          <button class="btn btn-primary" onclick="manualRefresh()" style="margin-top:12px;">🔄 Refresh Now</button>
+        </div>
+      </div>`;
     return;
   }
-  container.innerHTML = events.slice(0, 10).map(e => `
-    <div class="event-card">
-      <div class="event-main">
-        <div class="event-name">${esc(e.name)}</div>
-        <div class="event-meta">${e.date || 'TBD'} · ${esc(e.promotion)}${e.venue ? ' · ' + esc(e.venue) : ''}</div>
-      </div>
-    </div>
-  `).join('');
+
+  container.innerHTML = events.map(e => {
+    const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna','New Japan Pro-Wrestling':'njpw','Ring of Honor':'roh' };
+    const promoClass = promoMap[e.promotion] || '';
+    const isUpcoming = e.date >= new Date().toISOString().split('T')[0];
+    return `
+      <div class="dash-card promo-${promoClass}">
+        <div class="dash-card-header">
+          <div>
+            <div class="dash-card-title">${esc(e.name)}</div>
+            <div class="dash-card-sub">${esc(e.promotion)}${e.event_type ? ' · ' + esc(e.event_type) : ''}</div>
+          </div>
+          <span class="card-promo-badge" style="background:${isUpcoming ? 'rgba(34,197,94,0.15)' : 'var(--bg-glass)'};color:${isUpcoming ? '#4ade80' : 'var(--text-muted)'}">
+            ${isUpcoming ? 'UPCOMING' : 'PAST'}
+          </span>
+        </div>
+        <div class="dash-card-body">
+          ${e.venue ? esc(e.venue) : ''}${e.venue && e.location ? ', ' : ''}${e.location ? esc(e.location) : ''}
+        </div>
+        <div class="dash-card-meta">
+          <span>📅 ${e.date || 'TBD'}</span>
+          ${e.rating ? '<span>⭐ ' + e.rating.toFixed(1) + '</span>' : ''}
+          ${e.attendance ? '<span>👥 ' + e.attendance.toLocaleString() + '</span>' : ''}
+        </div>
+      </div>`;
+  }).join('');
 }
 
-// ── News Feed ──
+// ══════════════════════════════════════════════
+// NEWS FEED
+// ══════════════════════════════════════════════
 async function fetchNews() {
   const container = document.getElementById('newsFeed');
   try {
-    // Fetch from multiple RSS/text sources (CORS proxy)
-    const rssFeeds = [
-      'https://www.cagematch.net/?id=1',
-      'https://wrestlingdb.org/events/'
-    ];
-    // Use a simple news-aggregation approach: grab from OWDB recent events as "news"
     const events = dash.state.events;
-    const recent = [...events].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
+    const recent = [...events].sort((a,b) => b.date.localeCompare(a.date)).slice(0, 8);
 
     if (recent.length) {
-      container.innerHTML = recent.map(e => `
-        <div class="news-item">
-          <span class="news-meta">${e.date}</span>
-          <div><strong>${esc(e.promotion)}</strong> — ${esc(e.name)}</div>
-        </div>
-      `).join('');
+      container.innerHTML = recent.map(e => {
+        const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna' };
+        const promoClass = promoMap[e.promotion] || '';
+        return `
+        <div class="dash-card promo-${promoClass}" style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font-size:18px;">📰</span>
+            <div>
+              <strong>${esc(e.promotion)}</strong> — ${esc(e.name)}
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📅 ${e.date}${e.venue ? ' · ' + esc(e.venue) : ''}</div>
+            </div>
+          </div>
+          <span class="card-promo-badge">${esc(e.event_type || 'Event')}</span>
+        </div>`;
+      }).join('');
     } else {
-      container.innerHTML = '<p class="empty-state">No recent events. Import some data to see news here.</p>';
+      container.innerHTML = `
+        <div class="dash-card" style="grid-column:1/-1;"><div class="empty-state" style="padding:24px;">
+          <div class="icon">📡</div>
+          <h3>No news yet</h3>
+          <p>Auto-population runs on first visit. Import events or refresh to see news here.</p>
+        </div></div>`;
     }
-  } catch (err) {
-    container.innerHTML = '<p class="empty-state">Could not load news feed.</p>';
+  } catch {
+    container.innerHTML = '<div class="dash-card" style="grid-column:1/-1;"><p style="color:var(--text-muted);padding:16px;">Could not load news feed.</p></div>';
   }
 }
 
-// ── Events ──
+// ══════════════════════════════════════════════
+// EVENTS
+// ══════════════════════════════════════════════
 async function renderEvents() {
   const all = await DashboardStore.getAllEvents();
   const search = (document.getElementById('searchEvent').value || '').toLowerCase();
   const promo = document.getElementById('filterPromotion').value;
 
-  // Populate promotion filter
+  // Populate promo filter
   const promos = await DashboardStore.getUniquePromotions();
   const promoSelect = document.getElementById('filterPromotion');
   promoSelect.innerHTML = '<option value="">All Promotions</option>' +
@@ -138,39 +331,60 @@ async function renderEvents() {
   let filtered = all;
   if (search) filtered = filtered.filter(e => e.name.toLowerCase().includes(search) || e.promotion.toLowerCase().includes(search));
   if (promo) filtered = filtered.filter(e => e.promotion === promo);
-  filtered.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+  filtered.sort((a,b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
 
+  document.getElementById('allEventsCount').textContent = filtered.length;
   const container = document.getElementById('eventsList');
+
   if (!filtered.length) {
-    container.innerHTML = '<p class="empty-state">No events found.</p>';
+    container.innerHTML = `
+      <div class="dash-card" style="grid-column:1/-1;">
+        <div class="empty-state" style="padding:24px;">
+          <div class="icon">📅</div>
+          <h3>No events found</h3>
+          <p>${all.length === 0 ? 'Auto-load events or add one manually.' : 'Try different search/filter terms.'}</p>
+          ${all.length === 0 ? '<button class="btn btn-primary" onclick="manualRefresh()" style="margin-top:12px;">🔄 Auto-Load Events</button>' : ''}
+        </div>
+      </div>`;
     return;
   }
-  container.innerHTML = filtered.map(e => `
-    <div class="event-card">
-      <div class="event-main">
-        <div class="event-name">${esc(e.name)}</div>
-        <div class="event-meta">
-          ${e.date || 'TBD'} · ${esc(e.promotion)}${e.venue ? ' · ' + esc(e.venue) : ''}${e.attendance ? ' · ' + e.attendance.toLocaleString() + ' attendance' : ''}
-          ${e.rating ? ' · ⭐ ' + e.rating.toFixed(1) : ''}
-          ${e.event_type ? ' · <span class="badge badge-' + e.event_type.toLowerCase() + '">' + esc(e.event_type) + '</span>' : ''}
+
+  container.innerHTML = filtered.map(e => {
+    const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna','New Japan Pro-Wrestling':'njpw','Ring of Honor':'roh' };
+    const promoClass = promoMap[e.promotion] || '';
+    return `
+      <div class="dash-card promo-${promoClass}">
+        <div class="dash-card-header">
+          <div>
+            <div class="dash-card-title">${esc(e.name)}</div>
+            <div class="dash-card-sub">${esc(e.promotion)}${e.event_type ? ' · ' + esc(e.event_type) : ''}</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm" onclick="showEventForm('${e.id}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteEvent('${e.id}')">🗑️</button>
+          </div>
         </div>
-      </div>
-      <div class="event-actions">
-        <button onclick="showEventForm('${e.id}')">✏️</button>
-        <button class="btn-danger" onclick="deleteEvent('${e.id}')">🗑️</button>
-      </div>
-    </div>
-  `).join('');
+        <div class="dash-card-body">${e.venue || ''}${e.venue && e.location ? ', ' : ''}${e.location || 'Location TBD'}</div>
+        <div class="dash-card-meta">
+          <span>📅 ${e.date || 'TBD'}</span>
+          ${e.rating ? '<span>⭐ ' + e.rating.toFixed(1) + '</span>' : ''}
+          ${e.attendance ? '<span>👥 ' + e.attendance.toLocaleString() + '</span>' : ''}
+          <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${e.source || 'manual'}</span>
+        </div>
+      </div>`;
+  }).join('');
 }
 
-// ── Matches ──
+// ══════════════════════════════════════════════
+// MATCHES
+// ══════════════════════════════════════════════
 async function renderMatches() {
   const all = await DashboardStore.getAllMatches();
   const search = (document.getElementById('searchMatch').value || '').toLowerCase();
   const promo = document.getElementById('filterPromotionMatch').value;
   const type = document.getElementById('filterMatchType').value;
 
-  // Populate filters
+  // Populate promo filter
   const promos = await DashboardStore.getUniquePromotions();
   const promoSelect = document.getElementById('filterPromotionMatch');
   promoSelect.innerHTML = '<option value="">All Promotions</option>' +
@@ -186,97 +400,121 @@ async function renderMatches() {
   if (search) filtered = filtered.filter(m =>
     m.participants.some(p => p.toLowerCase().includes(search)) ||
     m.event_name.toLowerCase().includes(search) ||
-    m.promotion.toLowerCase().includes(search)
-  );
+    m.promotion.toLowerCase().includes(search));
   if (promo) filtered = filtered.filter(m => m.promotion === promo);
   if (type) filtered = filtered.filter(m => m.match_type === type);
-  filtered.sort((a, b) => b.date.localeCompare(a.date) || a.event_name.localeCompare(b.event_name));
+  filtered.sort((a,b) => b.date.localeCompare(a.date) || a.event_name.localeCompare(b.event_name));
 
+  document.getElementById('allMatchesCount').textContent = filtered.length;
   const container = document.getElementById('matchesList');
+
   if (!filtered.length) {
-    container.innerHTML = '<p class="empty-state">No matches found.</p>';
+    container.innerHTML = `
+      <div class="dash-card" style="grid-column:1/-1;">
+        <div class="empty-state" style="padding:24px;">
+          <div class="icon">🤼</div>
+          <h3>No matches found</h3>
+          <p>Try different search terms or import from Cagematch.</p>
+        </div>
+      </div>`;
     return;
   }
-  container.innerHTML = filtered.map(m => `
-    <div class="match-card">
-      <div class="match-main">
-        <div class="match-name">${esc(m.participants.join(' vs '))}${m.winner ? ' — 🏆 ' + esc(m.winner) + ' wins' : ''}</div>
-        <div class="match-meta">
-          ${m.date || 'TBD'} · ${esc(m.promotion)}${m.event_name ? ' · ' + esc(m.event_name) : ''}
-          · <span class="badge badge-${m.match_type.toLowerCase().replace(/[^a-z0-9]/g, '')}">${esc(m.match_type)}</span>
-          ${m.stipulation ? ' · ' + esc(m.stipulation) : ''}
-          ${m.rating != null ? ' · ⭐ ' + m.rating.toFixed(1) : ''}
-          ${m.won_rating != null ? ' · WON: ' + m.won_rating.toFixed(1) + '*' : ''}
-          ${m.title_match ? ' · 👑 ' + esc(m.title_name || 'Title Match') : ''}
+
+  container.innerHTML = filtered.map(m => {
+    const promoMap = { 'WWE':'wwe','All Elite Wrestling':'aew','Total Nonstop Action Wrestling':'tna','New Japan Pro-Wrestling':'njpw','Ring of Honor':'roh' };
+    const promoClass = promoMap[m.promotion] || '';
+    return `
+      <div class="dash-card promo-${promoClass}">
+        <div class="dash-card-header">
+          <div>
+            <div class="dash-card-title">${esc(m.participants.join(' 🤼 vs '))}</div>
+            <div class="dash-card-sub">${m.winner ? '🏆 ' + esc(m.winner) + ' wins' : 'Result TBD'}${m.result_type ? ' (' + esc(m.result_type) + ')' : ''}</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-sm" onclick="showMatchForm('${m.id}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteMatch('${m.id}')">🗑️</button>
+            <span class="card-promo-badge">${esc(m.match_type)}</span>
+          </div>
         </div>
-      </div>
-      <div class="match-actions">
-        <button onclick="showMatchForm('${m.id}')">✏️</button>
-        <button class="btn-danger" onclick="deleteMatch('${m.id}')">🗑️</button>
-      </div>
-    </div>
-  `).join('');
+        <div class="dash-card-body">
+          ${m.event_name ? esc(m.event_name) + (m.promotion ? ' · ' + esc(m.promotion) : '') : esc(m.promotion)}
+          ${m.stipulation ? ' · ' + esc(m.stipulation) : ''}
+        </div>
+        <div class="dash-card-meta">
+          <span>📅 ${m.date || 'TBD'}</span>
+          ${m.rating != null ? '<span>⭐ ' + m.rating.toFixed(1) + '</span>' : ''}
+          ${m.won_rating != null ? '<span>📊 WON: ' + m.won_rating.toFixed(1) + '*</span>' : ''}
+          ${m.title_match ? '<span>👑 ' + esc(m.title_name || 'Title Match') + '</span>' : ''}
+          ${m.notes ? '<span>📝 ' + esc(m.notes) + '</span>' : ''}
+        </div>
+      </div>`;
+  }).join('');
 }
 
-// ── Event Form ──
+// ══════════════════════════════════════════════
+// EVENT FORM
+// ══════════════════════════════════════════════
 async function showEventForm(id) {
   let data = null;
   if (id) data = await DashboardStore.getEvent(id);
 
   const promos = await DashboardStore.getUniquePromotions();
   const overlay = document.getElementById('modalOverlay');
-  const modal = document.getElementById('modal');
-  document.getElementById('modalTitle').textContent = data ? 'Edit Event' : 'Add Event';
+  document.getElementById('modalTitle').textContent = data ? '✏️ Edit Event' : '➕ Add Event';
 
   document.getElementById('modalBody').innerHTML = `
     <form id="dashboardForm" onsubmit="submitEventForm('${id || ''}'); return false;">
       <div class="form-group">
-        <label>Event Name <span class="required-star">*</span></label>
-        <input type="text" id="f_name" value="${esc(data?.name || '')}" required placeholder="e.g. WWE SummerSlam 2026">
+        <label>Event Name <span style="color:#f87171;">*</span></label>
+        <input type="text" class="form-input" id="f_name" value="${esc(data?.name || '')}" required placeholder="e.g. SummerSlam 2026">
       </div>
       <div class="form-group">
         <label>Promotion</label>
-        <input type="text" id="f_promotion" value="${esc(data?.promotion || '')}" list="promoList" placeholder="e.g. WWE">
+        <input type="text" class="form-input" id="f_promotion" value="${esc(data?.promotion || '')}" list="promoList" placeholder="e.g. WWE">
         <datalist id="promoList">${promos.map(p => `<option value="${esc(p)}">`).join('')}</datalist>
       </div>
-      <div class="form-group">
-        <label>Date</label>
-        <input type="date" id="f_date" value="${data?.date || ''}">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" class="form-input" id="f_date" value="${data?.date || ''}">
+        </div>
+        <div class="form-group">
+          <label>Event Type</label>
+          <select class="form-input" id="f_event_type">
+            <option value="">-- Select --</option>
+            <option value="PPV" ${data?.event_type === 'PPV' ? 'selected' : ''}>PPV</option>
+            <option value="TV" ${data?.event_type === 'TV' ? 'selected' : ''}>TV Show</option>
+            <option value="Special" ${data?.event_type === 'Special' ? 'selected' : ''}>Special</option>
+            <option value="House Show" ${data?.event_type === 'House Show' ? 'selected' : ''}>House Show</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label>Event Type</label>
-        <select id="f_event_type">
-          <option value="">-- Select --</option>
-          <option value="PPV" ${data?.event_type === 'PPV' ? 'selected' : ''}>PPV</option>
-          <option value="TV" ${data?.event_type === 'TV' ? 'selected' : ''}>TV Show</option>
-          <option value="Special" ${data?.event_type === 'Special' ? 'selected' : ''}>Special</option>
-          <option value="House Show" ${data?.event_type === 'House Show' ? 'selected' : ''}>House Show</option>
-        </select>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Venue</label>
+          <input type="text" class="form-input" id="f_venue" value="${esc(data?.venue || '')}" placeholder="e.g. U.S. Bank Stadium">
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" class="form-input" id="f_location" value="${esc(data?.location || '')}" placeholder="e.g. Minneapolis, MN">
+        </div>
       </div>
-      <div class="form-group">
-        <label>Venue</label>
-        <input type="text" id="f_venue" value="${esc(data?.venue || '')}" placeholder="e.g. MetLife Stadium">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Attendance</label>
+          <input type="number" class="form-input" id="f_attendance" value="${data?.attendance || ''}" placeholder="e.g. 55000">
+        </div>
+        <div class="form-group">
+          <label>Rating (0-10)</label>
+          <input type="number" class="form-input" id="f_rating" min="0" max="10" step="0.1" value="${data?.rating ?? ''}" placeholder="e.g. 8.5">
+        </div>
       </div>
-      <div class="form-group">
-        <label>Location</label>
-        <input type="text" id="f_location" value="${esc(data?.location || '')}" placeholder="e.g. East Rutherford, NJ">
-      </div>
-      <div class="form-group">
-        <label>Attendance</label>
-        <input type="number" id="f_attendance" value="${data?.attendance || ''}" placeholder="e.g. 55000">
-      </div>
-      <div class="form-group">
-        <label>Rating (0-10)</label>
-        <input type="number" id="f_rating" min="0" max="10" step="0.1" value="${data?.rating ?? ''}" placeholder="e.g. 8.5">
-      </div>
-      <div class="form-actions">
+      <div style="display:flex;gap:10px;margin-top:16px;">
         <button type="submit" class="btn btn-primary">${data ? '💾 Save Event' : '➕ Add Event'}</button>
-        <button type="button" class="btn btn-secondary" onclick="closeDashboardForm()">Cancel</button>
+        <button type="button" class="btn" onclick="closeDashboardForm()">Cancel</button>
       </div>
-    </form>
-  `;
+    </form>`;
   overlay.classList.add('show');
-  modal.classList.add('show');
 }
 
 async function submitEventForm(id) {
@@ -293,19 +531,22 @@ async function submitEventForm(id) {
   try {
     if (id) {
       await DashboardStore.updateEvent(id, data);
-      app.showToast('✅ Event updated');
+      showToast('✅ Event updated', 'success');
     } else {
       await DashboardStore.createEvent(data);
-      app.showToast('✅ Event added');
+      showToast('✅ Event added', 'success');
     }
     closeDashboardForm();
     renderEvents();
+    loadOverview();
   } catch (err) {
-    app.showError(err.message);
+    showToast('❌ ' + err.message, 'error');
   }
 }
 
-// ── Match Form ──
+// ══════════════════════════════════════════════
+// MATCH FORM
+// ══════════════════════════════════════════════
 async function showMatchForm(id) {
   let data = null;
   let events = [];
@@ -314,106 +555,106 @@ async function showMatchForm(id) {
   const promos = await DashboardStore.getUniquePromotions();
 
   const overlay = document.getElementById('modalOverlay');
-  const modal = document.getElementById('modal');
-  document.getElementById('modalTitle').textContent = data ? 'Edit Match' : 'Add Match';
+  document.getElementById('modalTitle').textContent = data ? '✏️ Edit Match' : '➕ Add Match';
 
   document.getElementById('modalBody').innerHTML = `
     <form id="dashboardForm" onsubmit="submitMatchForm('${id || ''}'); return false;">
       <div class="form-group">
-        <label>Participants <span class="required-star">*</span></label>
-        <input type="text" id="f_participants" value="${esc((data?.participants || []).join(' vs '))}" required placeholder="e.g. Roman Reigns vs Cody Rhodes">
-        <small class="field-hint">Separate participants with "vs"</small>
+        <label>Participants <span style="color:#f87171;">*</span></label>
+        <input type="text" class="form-input" id="f_participants" value="${esc((data?.participants || []).join(' vs '))}" required placeholder="e.g. Roman Reigns vs Cody Rhodes">
+        <small style="color:var(--text-muted);font-size:11px;">Separate participants with " vs "</small>
       </div>
       <div class="form-group">
         <label>Winner</label>
-        <input type="text" id="f_winner" value="${esc(data?.winner || '')}" placeholder="e.g. Cody Rhodes (leave blank for draw/No Contest)">
+        <input type="text" class="form-input" id="f_winner" value="${esc(data?.winner || '')}" placeholder="Leave blank for draw/NC">
       </div>
-      <div class="form-group">
-        <label>Match Type</label>
-        <select id="f_match_type">
-          <option value="">-- Select --</option>
-          <option value="Singles" ${data?.match_type === 'Singles' ? 'selected' : ''}>Singles</option>
-          <option value="Tag Team" ${data?.match_type === 'Tag Team' ? 'selected' : ''}>Tag Team</option>
-          <option value="Triple Threat" ${data?.match_type === 'Triple Threat' ? 'selected' : ''}>Triple Threat</option>
-          <option value="Fatal 4-Way" ${data?.match_type === 'Fatal 4-Way' ? 'selected' : ''}>Fatal 4-Way</option>
-          <option value="Battle Royal" ${data?.match_type === 'Battle Royal' ? 'selected' : ''}>Battle Royal</option>
-          <option value="Royal Rumble" ${data?.match_type === 'Royal Rumble' ? 'selected' : ''}>Royal Rumble</option>
-          <option value="Gauntlet" ${data?.match_type === 'Gauntlet' ? 'selected' : ''}>Gauntlet</option>
-          <option value="Trios" ${data?.match_type === 'Trios' ? 'selected' : ''}>Trios (6-Person)</option>
-        </select>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Match Type</label>
+          <select class="form-input" id="f_match_type">
+            <option value="Singles" ${data?.match_type === 'Singles' ? 'selected' : ''}>Singles</option>
+            <option value="Tag Team" ${data?.match_type === 'Tag Team' ? 'selected' : ''}>Tag Team</option>
+            <option value="Triple Threat" ${data?.match_type === 'Triple Threat' ? 'selected' : ''}>Triple Threat</option>
+            <option value="Fatal 4-Way" ${data?.match_type === 'Fatal 4-Way' ? 'selected' : ''}>Fatal 4-Way</option>
+            <option value="Battle Royal" ${data?.match_type === 'Battle Royal' ? 'selected' : ''}>Battle Royal</option>
+            <option value="Royal Rumble" ${data?.match_type === 'Royal Rumble' ? 'selected' : ''}>Royal Rumble</option>
+            <option value="Trios" ${data?.match_type === 'Trios' ? 'selected' : ''}>Trios (6-Person)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Stipulation</label>
+          <select class="form-input" id="f_stipulation">
+            <option value="">None</option>
+            <option value="Steel Cage" ${data?.stipulation === 'Steel Cage' ? 'selected' : ''}>Steel Cage</option>
+            <option value="Hell in a Cell" ${data?.stipulation === 'Hell in a Cell' ? 'selected' : ''}>Hell in a Cell</option>
+            <option value="Ladder" ${data?.stipulation === 'Ladder' ? 'selected' : ''}>Ladder</option>
+            <option value="TLC" ${data?.stipulation === 'TLC' ? 'selected' : ''}>TLC</option>
+            <option value="Extreme Rules" ${data?.stipulation === 'Extreme Rules' ? 'selected' : ''}>Extreme Rules</option>
+            <option value="Iron Man" ${data?.stipulation === 'Iron Man' ? 'selected' : ''}>Iron Man</option>
+            <option value="No DQ" ${data?.stipulation === 'No DQ' ? 'selected' : ''}>No DQ</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label>Stipulation</label>
-        <select id="f_stipulation">
-          <option value="">None</option>
-          <option value="Steel Cage" ${data?.stipulation === 'Steel Cage' ? 'selected' : ''}>Steel Cage</option>
-          <option value="Hell in a Cell" ${data?.stipulation === 'Hell in a Cell' ? 'selected' : ''}>Hell in a Cell</option>
-          <option value="Ladder" ${data?.stipulation === 'Ladder' ? 'selected' : ''}>Ladder</option>
-          <option value="TLC" ${data?.stipulation === 'TLC' ? 'selected' : ''}>TLC</option>
-          <option value="Tables" ${data?.stipulation === 'Tables' ? 'selected' : ''}>Tables</option>
-          <option value="I Quit" ${data?.stipulation === 'I Quit' ? 'selected' : ''}>I Quit</option>
-          <option value="Iron Man" ${data?.stipulation === 'Iron Man' ? 'selected' : ''}>Iron Man</option>
-          <option value="Extreme Rules" ${data?.stipulation === 'Extreme Rules' ? 'selected' : ''}>Extreme Rules</option>
-          <option value="No DQ" ${data?.stipulation === 'No DQ' ? 'selected' : ''}>No DQ</option>
-          <option value="Submission" ${data?.stipulation === 'Submission' ? 'selected' : ''}>Submission</option>
-        </select>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Promotion</label>
+          <input type="text" class="form-input" id="f_match_promotion" value="${esc(data?.promotion || '')}" list="promoList2" placeholder="e.g. WWE">
+          <datalist id="promoList2">${promos.map(p => `<option value="${esc(p)}">`).join('')}</datalist>
+        </div>
+        <div class="form-group">
+          <label>Event</label>
+          <select class="form-input" id="f_event_id">
+            <option value="">-- No Event --</option>
+            ${events.map(e => `<option value="${e.id}" ${data?.event_id === e.id ? 'selected' : ''}>${esc(e.name)} (${e.date || 'no date'})</option>`).join('')}
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label>Promotion</label>
-        <input type="text" id="f_match_promotion" value="${esc(data?.promotion || '')}" list="promoList2" placeholder="e.g. WWE">
-        <datalist id="promoList2">${promos.map(p => `<option value="${esc(p)}">`).join('')}</datalist>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" class="form-input" id="f_match_date" value="${data?.date || ''}">
+        </div>
+        <div class="form-group">
+          <label>Result Type</label>
+          <select class="form-input" id="f_result_type">
+            <option value="">-- Select --</option>
+            <option value="Pinfall" ${data?.result_type === 'Pinfall' ? 'selected' : ''}>Pinfall</option>
+            <option value="Submission" ${data?.result_type === 'Submission' ? 'selected' : ''}>Submission</option>
+            <option value="KO" ${data?.result_type === 'KO' ? 'selected' : ''}>KO</option>
+            <option value="DQ" ${data?.result_type === 'DQ' ? 'selected' : ''}>Disqualification</option>
+            <option value="No Contest" ${data?.result_type === 'No Contest' ? 'selected' : ''}>No Contest</option>
+            <option value="Draw" ${data?.result_type === 'Draw' ? 'selected' : ''}>Draw/Time Limit</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label>Event</label>
-        <select id="f_event_id">
-          <option value="">-- No Event --</option>
-          ${events.map(e => `<option value="${e.id}" ${data?.event_id === e.id ? 'selected' : ''}>${esc(e.name)} (${e.date || 'no date'})</option>`).join('')}
-        </select>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Community Rating (0-10)</label>
+          <input type="number" class="form-input" id="f_rating" min="0" max="10" step="0.1" value="${data?.rating ?? ''}" placeholder="e.g. 8.7">
+        </div>
+        <div class="form-group">
+          <label>WON Rating (0-5)</label>
+          <input type="number" class="form-input" id="f_won_rating" min="0" max="5" step="0.25" value="${data?.won_rating ?? ''}" placeholder="e.g. 4.5">
+        </div>
       </div>
-      <div class="form-group">
-        <label>Date</label>
-        <input type="date" id="f_match_date" value="${data?.date || ''}">
+      <div class="form-row">
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="f_title_match" ${data?.title_match ? 'checked' : ''}> Title Match
+          </label>
+          <input type="text" class="form-input" id="f_title_name" value="${esc(data?.title_name || '')}" placeholder="e.g. WWE Championship">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea class="form-input" id="f_notes" rows="2" placeholder="Additional notes">${esc(data?.notes || '')}</textarea>
+        </div>
       </div>
-      <div class="form-group">
-        <label>Result Type</label>
-        <select id="f_result_type">
-          <option value="">-- Select --</option>
-          <option value="Pinfall" ${data?.result_type === 'Pinfall' ? 'selected' : ''}>Pinfall</option>
-          <option value="Submission" ${data?.result_type === 'Submission' ? 'selected' : ''}>Submission</option>
-          <option value="KO" ${data?.result_type === 'KO' ? 'selected' : ''}>KO</option>
-          <option value="Count Out" ${data?.result_type === 'Count Out' ? 'selected' : ''}>Count Out</option>
-          <option value="DQ" ${data?.result_type === 'DQ' ? 'selected' : ''}>Disqualification</option>
-          <option value="No Contest" ${data?.result_type === 'No Contest' ? 'selected' : ''}>No Contest</option>
-          <option value="Draw" ${data?.result_type === 'Draw' ? 'selected' : ''}>Draw/Time Limit</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Community Rating (0-10)</label>
-        <input type="number" id="f_rating" min="0" max="10" step="0.1" value="${data?.rating ?? ''}" placeholder="e.g. 8.7">
-      </div>
-      <div class="form-group">
-        <label>WON Star Rating (0-5)</label>
-        <input type="number" id="f_won_rating" min="0" max="5" step="0.25" value="${data?.won_rating ?? ''}" placeholder="e.g. 4.5">
-      </div>
-      <div class="form-group">
-        <label class="checkbox-label"><input type="checkbox" id="f_title_match" ${data?.title_match ? 'checked' : ''}> Title Match</label>
-      </div>
-      <div class="form-group">
-        <label>Title Name</label>
-        <input type="text" id="f_title_name" value="${esc(data?.title_name || '')}" placeholder="e.g. WWE Championship">
-      </div>
-      <div class="form-group">
-        <label>Notes</label>
-        <textarea id="f_notes">${esc(data?.notes || '')}</textarea>
-      </div>
-      <div class="form-actions">
+      <div style="display:flex;gap:10px;margin-top:16px;">
         <button type="submit" class="btn btn-primary">${data ? '💾 Save Match' : '➕ Add Match'}</button>
-        <button type="button" class="btn btn-secondary" onclick="closeDashboardForm()">Cancel</button>
+        <button type="button" class="btn" onclick="closeDashboardForm()">Cancel</button>
       </div>
-    </form>
-  `;
+    </form>`;
   overlay.classList.add('show');
-  modal.classList.add('show');
 }
 
 async function submitMatchForm(id) {
@@ -433,7 +674,6 @@ async function submitMatchForm(id) {
     title_name: document.getElementById('f_title_name').value,
     notes: document.getElementById('f_notes').value
   };
-  // Auto-fill event_name from event_id
   if (data.event_id) {
     const event = await DashboardStore.getEvent(data.event_id);
     if (event) {
@@ -445,27 +685,31 @@ async function submitMatchForm(id) {
   try {
     if (id) {
       await DashboardStore.updateMatch(id, data);
-      app.showToast('✅ Match updated');
+      showToast('✅ Match updated', 'success');
     } else {
       await DashboardStore.createMatch(data);
-      app.showToast('✅ Match added');
+      showToast('✅ Match added', 'success');
     }
     closeDashboardForm();
     renderMatches();
+    loadOverview();
   } catch (err) {
-    app.showError(err.message);
+    showToast('❌ ' + err.message, 'error');
   }
 }
 
-// ── Delete ──
+// ══════════════════════════════════════════════
+// DELETE
+// ══════════════════════════════════════════════
 async function deleteEvent(id) {
   if (!confirm('Delete this event and all its matches?')) return;
   try {
     await DashboardStore.deleteEvent(id);
-    app.showToast('🗑️ Event deleted');
+    showToast('🗑️ Event deleted', 'success');
     renderEvents();
+    loadOverview();
   } catch (err) {
-    app.showError(err.message);
+    showToast('❌ ' + err.message, 'error');
   }
 }
 
@@ -473,48 +717,69 @@ async function deleteMatch(id) {
   if (!confirm('Delete this match?')) return;
   try {
     await DashboardStore.deleteMatch(id);
-    app.showToast('🗑️ Match deleted');
+    showToast('🗑️ Match deleted', 'success');
     renderMatches();
+    loadOverview();
   } catch (err) {
-    app.showError(err.message);
+    showToast('❌ ' + err.message, 'error');
   }
 }
 
-// ── Form Close ──
+// ══════════════════════════════════════════════
+// FORM CLOSE
+// ══════════════════════════════════════════════
 function closeDashboardForm() {
   document.getElementById('modalOverlay').classList.remove('show');
-  document.getElementById('modal').classList.remove('show');
 }
 
-// ── Export ──
-async function exportAll() {
-  const data = await DashboardStore.exportAll();
-  showExport(data);
+// ══════════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════════
+function saveSettings() {
+  const key = document.getElementById('settingsApiKey').value.trim();
+  dash.state.settings.cagematchKey = key;
+  localStorage.setItem('dashboardSettings', JSON.stringify(dash.state.settings));
+  const importField = document.getElementById('cagematchApiKey');
+  if (importField) importField.value = key;
+  showToast('✅ Settings saved', 'success');
 }
-async function exportEvents() {
-  const data = await DashboardStore.exportEvents();
-  showExport(data);
+
+async function clearAllData() {
+  await DashboardStore.clearAll();
+  showToast('🗑️ All dashboard data cleared', 'success');
+  loadOverview();
+  renderEvents();
+  renderMatches();
 }
-async function exportMatches() {
-  const data = await DashboardStore.exportMatches();
-  showExport(data);
-}
+
+// ══════════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════════
+async function exportAll() { showExport(await DashboardStore.exportAll()); }
+async function exportEvents() { showExport(await DashboardStore.exportEvents()); }
+async function exportMatches() { showExport(await DashboardStore.exportMatches()); }
+
 function showExport(data) {
-  document.getElementById('exportPreview').style.display = 'block';
+  const preview = document.getElementById('exportPreview');
+  preview.style.display = 'block';
   document.getElementById('exportJson').textContent = JSON.stringify(data, null, 2);
+  preview.scrollIntoView({ behavior: 'smooth' });
 }
+
 function downloadExport() {
   const json = document.getElementById('exportJson').textContent;
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `wrestling-dashboard-export-${new Date().toISOString().split('T')[0]}.json`;
+  a.download = `wrestling-dashboard-${new Date().toISOString().split('T')[0]}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-// ── Import from File ──
+// ══════════════════════════════════════════════
+// IMPORT FROM FILE
+// ══════════════════════════════════════════════
 async function importFromFile(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -523,50 +788,50 @@ async function importFromFile(event) {
     const text = await file.text();
     const json = JSON.parse(text);
     const result = await DashboardStore.importFromFile(json);
-    container.innerHTML = `<div class="import-result-item" style="border-color:#57f287;">
-      ✅ Imported: ${result.events} events, ${result.matches} matches
-      ${result.skipped > 0 ? ` (${result.skipped} duplicates skipped)` : ''}
-    </div>`;
+    container.innerHTML = `<div class="toast success" style="padding:10px;">✅ Imported: ${result.events} events, ${result.matches} matches${result.skipped > 0 ? ' (' + result.skipped + ' dups skipped)' : ''}</div>`;
     renderEvents();
     renderMatches();
+    loadOverview();
   } catch (err) {
-    container.innerHTML = `<div class="import-result-item" style="border-color:#ed4245;">
-      ❌ Import failed: ${esc(err.message)}
-    </div>`;
+    container.innerHTML = `<div class="toast error" style="padding:10px;">❌ Import failed: ${esc(err.message)}</div>`;
   }
 }
 
-// ── Import from Cagematch ──
+// ══════════════════════════════════════════════
+// IMPORT FROM CAGEMATCH
+// ══════════════════════════════════════════════
 let cagematchResults = [];
+
 async function importCagematch() {
   const apiKey = document.getElementById('cagematchApiKey').value.trim() || dash.state.settings.cagematchKey;
   const query = document.getElementById('cagematchQuery').value.trim();
   const container = document.getElementById('cagematchResults');
 
-  if (!apiKey) { container.innerHTML = '<div class="import-result-item" style="border-color:#faa61a;">⚠️ Enter your Parse.bot API key first (or save it in Settings)</div>'; return; }
-  if (!query) { container.innerHTML = '<div class="import-result-item" style="border-color:#faa61a;">⚠️ Enter a search term</div>'; return; }
+  if (!apiKey) { container.innerHTML = '<div class="toast error" style="padding:10px;">⚠️ Enter your Parse.bot API key first (or save it in Settings)</div>'; return; }
+  if (!query) { container.innerHTML = '<div class="toast error" style="padding:10px;">⚠️ Enter a search term</div>'; return; }
 
-  container.innerHTML = '<div class="import-result-item">🔍 Searching Cagematch...</div>';
+  container.innerHTML = '<div class="loading-spinner" style="padding:16px;"><div class="spinner"></div> Searching Cagematch...</div>';
 
   try {
-    // Step 1: Search for the query
     const searchRes = await DashboardStore.importFromCagematch(apiKey, 'search_site', { query });
     const results = searchRes?.data?.results || [];
     cagematchResults = results;
 
     if (!results.length) {
-      container.innerHTML = '<div class="import-result-item">No results found on Cagematch.</div>';
+      container.innerHTML = '<div class="toast" style="padding:10px;">No results found on Cagematch.</div>';
       return;
     }
 
-    container.innerHTML = results.slice(0, 20).map(r => `
-      <div class="import-result-item" onclick="importCagematchDetail('${esc(r.Gimmick_id || r.ID || '')}', '${esc(r.Gimmick || r.Name || query)}')">
-        <div class="result-name">${esc(r.Gimmick || r.Name || 'Unknown')}</div>
-        <div class="result-meta">${r.Promotion_text || r.Promotion || ''}${r.Rating ? ' · ⭐ ' + r.Rating : ''}${r.Date ? ' · ' + r.Date : ''}</div>
+    container.innerHTML = results.slice(0, 15).map(r => `
+      <div class="dash-card" style="cursor:pointer;margin-bottom:4px;padding:10px 16px;" onclick="importCagematchDetail('${esc(r.Gimmick_id || r.ID || '')}', '${esc(r.Gimmick || r.Name || query)}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div><strong>${esc(r.Gimmick || r.Name || 'Unknown')}</strong></div>
+          <span style="color:var(--text-muted);font-size:12px;">${r.Promotion_text || r.Promotion || ''}${r.Rating ? ' ⭐' + r.Rating : ''}</span>
+        </div>
       </div>
-    `).join('') + '<div style="margin-top:8px"><button class="btn btn-secondary" onclick="importCagematchAll()">📥 Import All</button></div>';
+    `).join('') + '<div style="display:flex;gap:8px;margin-top:8px;"><button class="btn btn-primary btn-sm" onclick="importCagematchAll()">📥 Import All Visible</button></div>';
   } catch (err) {
-    container.innerHTML = `<div class="import-result-item" style="border-color:#ed4245;">❌ ${esc(err.message)}</div>`;
+    container.innerHTML = `<div class="toast error" style="padding:10px;">❌ ${esc(err.message)}</div>`;
   }
 }
 
@@ -575,27 +840,17 @@ async function importCagematchDetail(id, name) {
   const container = document.getElementById('cagematchResults');
   if (!id) return;
 
-  container.innerHTML = `<div class="import-result-item">🔍 Fetching details for ${esc(name)}...</div>`;
+  container.innerHTML = `<div class="loading-spinner" style="padding:16px;"><div class="spinner"></div> Fetching ${esc(name)}...</div>`;
 
   try {
-    // Try to get profile and matches
     let imported = { events: 0, matches: 0, skipped: 0 };
-    try {
-      const profile = await DashboardStore.importFromCagematch(apiKey, 'get_wrestler_profile', { id });
-      // Store as a match entry if we have ID info
-    } catch (e) {}
-
-    // Get match history
     try {
       const matchesRes = await DashboardStore.importFromCagematch(apiKey, 'get_wrestler_matches', { id });
       const matchEntries = matchesRes?.data?.matches || [];
       const matches = matchEntries.map(m => ({
-        source: 'cagematch',
-        source_id: String(m.id || ''),
-        event_name: m.event || '',
-        promotion: m.promotion || m.Promotion || '',
-        date: m.Date || m.date || '',
-        match_type: m.match_type || 'Singles',
+        source: 'cagematch', source_id: String(m.id || ''),
+        event_name: m.event || '', promotion: m.promotion || m.Promotion || '',
+        date: m.Date || m.date || '', match_type: m.match_type || 'Singles',
         participants: [name, ...(m.opponent ? [m.opponent] : [])],
         winner: m.result?.includes('wins') ? name : (m.opponent || ''),
         rating: m.Rating ? parseFloat(m.Rating) : null
@@ -605,12 +860,11 @@ async function importCagematchDetail(id, name) {
       imported.skipped += result.skipped;
     } catch (e) {}
 
-    container.innerHTML = `<div class="import-result-item" style="border-color:#57f287;">
-      ✅ Imported matches for ${esc(name)}: ${imported.matches} new, ${imported.skipped} duplicates
-    </div>`;
+    container.innerHTML = `<div class="toast success" style="padding:10px;">✅ Imported matches for ${esc(name)}: ${imported.matches} new, ${imported.skipped} duplicates</div>`;
     renderMatches();
+    loadOverview();
   } catch (err) {
-    container.innerHTML = `<div class="import-result-item" style="border-color:#ed4245;">❌ ${esc(err.message)}</div>`;
+    container.innerHTML = `<div class="toast error" style="padding:10px;">❌ ${esc(err.message)}</div>`;
   }
 }
 
@@ -621,18 +875,15 @@ async function importCagematchAll() {
   for (const r of cagematchResults.slice(0, 10)) {
     const id = r.Gimmick_id || r.ID || '';
     if (!id) continue;
-    container.innerHTML = `<div class="import-result-item">📥 Importing ${esc(r.Gimmick || r.Name)}...</div>`;
+    container.innerHTML = `<div class="loading-spinner" style="padding:16px;"><div class="spinner"></div> 📥 Importing ${esc(r.Gimmick || r.Name)}...</div>`;
     const apiKey = document.getElementById('cagematchApiKey').value.trim() || dash.state.settings.cagematchKey;
     try {
       const matchesRes = await DashboardStore.importFromCagematch(apiKey, 'get_wrestler_matches', { id });
       const matchEntries = matchesRes?.data?.matches || [];
       const matches = matchEntries.map(m => ({
-        source: 'cagematch',
-        source_id: String(m.id || ''),
-        event_name: m.event || '',
-        promotion: m.promotion || m.Promotion || '',
-        date: m.Date || m.date || '',
-        match_type: m.match_type || 'Singles',
+        source: 'cagematch', source_id: String(m.id || ''),
+        event_name: m.event || '', promotion: m.promotion || m.Promotion || '',
+        date: m.Date || m.date || '', match_type: m.match_type || 'Singles',
         participants: [r.Gimmick || r.Name || '', ...(m.opponent ? [m.opponent] : [])],
         winner: m.result?.includes('wins') ? (r.Gimmick || '') : (m.opponent || ''),
         rating: m.Rating ? parseFloat(m.Rating) : null
@@ -640,61 +891,21 @@ async function importCagematchAll() {
       const result = await DashboardStore.importMany([], matches);
       total.matches += result.matches;
       total.skipped += result.skipped;
-      await new Promise(r => setTimeout(r, 300)); // Rate limit
-    } catch (e) {
-      console.warn('Failed to import:', r.Gimmick, e.message);
-    }
+      await new Promise(r => setTimeout(r, 300));
+    } catch (e) { console.warn('Failed:', r.Gimmick, e.message); }
   }
 
-  container.innerHTML = `<div class="import-result-item" style="border-color:#57f287;">
-    ✅ Batch import complete: ${total.matches} new matches, ${total.skipped} duplicates
-  </div>`;
+  container.innerHTML = `<div class="toast success" style="padding:10px;">✅ Batch complete: ${total.matches} new matches, ${total.skipped} duplicates</div>`;
   renderMatches();
-}
-
-// ── Import from OWDB ──
-async function importOwdb() {
-  const query = document.getElementById('owdbQuery').value.trim();
-  const container = document.getElementById('owdbResults');
-  if (!query) { container.innerHTML = '<div class="import-result-item" style="border-color:#faa61a;">⚠️ Enter a search term</div>'; return; }
-
-  container.innerHTML = '<div class="import-result-item">🔍 Searching OWDB...</div>';
-
-  try {
-    // OWDB has a REST API. Try fetching from their API.
-    // Since we don't know the exact API endpoint structure, try the web scrape approach
-    const resp = await fetch(`https://wrestlingdb.org/wrestlers/?search=${encodeURIComponent(query)}`);
-    if (!resp.ok) throw new Error(`OWDB responded with ${resp.status}`);
-
-    container.innerHTML = `<div class="import-result-item" style="border-color:#57f287;">
-      ✅ OWDB search results found. <a href="https://wrestlingdb.org/wrestlers/?search=${encodeURIComponent(query)}" target="_blank">View in OWDB</a>
-    </div>`;
-  } catch (err) {
-    container.innerHTML = `<div class="import-result-item" style="border-color:#ed4245;">
-      ❌ OWDB: ${esc(err.message)}<br>
-      <small>Try the Cagematch import above instead — it has broader coverage.</small>
-    </div>`;
-  }
-}
-
-// ── Clear All ──
-async function clearAllData() {
-  await DashboardStore.clearAll();
-  app.showToast('🗑️ All dashboard data cleared');
   loadOverview();
 }
 
-// ── Utility ──
+// ══════════════════════════════════════════════
+// ESCAPE
+// ══════════════════════════════════════════════
 function esc(s) {
   if (s == null) return '';
-  const div = document.createElement('div');
-  div.textContent = String(s);
-  return div.innerHTML;
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
 }
-
-// ── Wire up overlay click to close modal ──
-document.addEventListener('click', function(e) {
-  if (e.target.classList.contains('modal-overlay')) {
-    closeDashboardForm();
-  }
-});
